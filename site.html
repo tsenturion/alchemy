@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Алхимические Эффекты</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; cursor: pointer; }
+        th { background-color: #f2f2f2; }
+        .menu {
+            display: none;
+            position: absolute;
+            background: white;
+            border: 1px solid black;
+            padding: 10px;
+            z-index: 1000;
+        }
+        .menu button { display: block; width: 100%; margin: 5px 0; }
+        .positive { background-color: #d4edda; }
+        .negative { background-color: #f8d7da; }
+        .mixed { background: linear-gradient(90deg, #f8d7da 50%, #d4edda 50%); }
+        .controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <div class="button-group">
+            <button id="menu-btn">Выбрать Эффект</button>
+            <div class="menu" id="effects-menu"></div>
+            <button id="back-btn">Назад</button>
+        </div>
+        <input type="text" id="search" placeholder="Поиск по названию..." />
+    </div>
+
+    <!-- Таблица выбора -->
+    <table id="selection-table" style="display: none;">
+        <thead>
+            <tr>
+                <th>Название <button id="remove-all-btn">Удалить все</button></th>
+                <th>Эффект 1</th>
+                <th>Эффект 2</th>
+                <th>Эффект 3</th>
+                <th>Эффект 4</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <table id="combination-table" style="display: none;">
+        <thead>
+            <tr>
+                <th>Название</th>
+                <th>Эффект 1</th>
+                <th>Эффект 2</th>
+                <th>Эффект 3</th>
+                <th>Эффект 4</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <table id="data-table">
+        <thead>
+            <tr>
+                <th>Название</th>
+                <th>Эффект 1</th>
+                <th>Эффект 2</th>
+                <th>Эффект 3</th>
+                <th>Эффект 4</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+$(document).ready(() => {
+    const MAX_SELECTION_COUNT = 3;
+    const effectClasses = { positive: 'positive', negative: 'negative', mixed: 'mixed' };
+    let data = [], effectsData = {}, positiveEffects = new Set(), negativeEffects = new Set();
+    let selectedNames = new Set(), selectedColors = {}, searchQuery = '', selectedEffect = null;
+    let isFirstNamePositive = null; // Отслеживание состояния первого эффекта (положительный или отрицательный)
+
+    const $effectsMenu = $('#effects-menu'),
+          $dataTableBody = $('#data-table tbody'),
+          $selectionTableBody = $('#selection-table tbody'),
+          $combinationTableBody = $('#combination-table tbody'),
+          $search = $('#search'),
+          $backBtn = $('#back-btn'),
+          $selectionTable = $('#selection-table'),
+          $combinationTable = $('#combination-table');
+
+    const loadData = () => {
+        $.when($.getJSON('data.json'), $.getJSON('positive_negative_data.json'), $.getJSON('effects.json'))
+            .done(([dataResponse], [effectsResponse], [effectsList]) => {
+                data = dataResponse;
+                positiveEffects = new Set(effectsResponse.positive_effects || []);
+                negativeEffects = new Set(effectsResponse.negative_effects || []);
+                effectsData = effectsList.reduce((acc, { effect, names }) => {
+                    acc[effect] = names;
+                    return acc;
+                }, {});
+                renderTable(data);
+                renderEffectsMenu();
+            }).fail(() => console.error('Ошибка загрузки данных'));
+    };
+
+    const getEffectClass = effect => positiveEffects.has(effect) ? effectClasses.positive : 
+                                    negativeEffects.has(effect) ? effectClasses.negative : '';
+
+    const getEffectState = item =>
+        item.effect_state || (item.effects.some(e => positiveEffects.has(e)) && item.effects.some(e => negativeEffects.has(e)) ? 0 :
+        item.effects.some(e => positiveEffects.has(e)) ? 1 : -1);
+
+        const renderEffectsMenu = () => {
+    $effectsMenu.empty();
+    
+    // Сортируем эффекты в алфавитном порядке
+    const sortedEffects = [...new Set(data.flatMap(i => i.effects))].sort((a, b) => a.localeCompare(b));
+
+    // Добавляем кнопки для каждого эффекта
+    $effectsMenu.append(sortedEffects
+        .map(effect => `<button class="effect-btn">${effect}</button>`)
+        .join(''));
+};
+
+    const renderTable = items => {
+        $dataTableBody.empty().append(items.filter(({ name }) => !searchQuery || name.toLowerCase().includes(searchQuery.toLowerCase()))
+            .map(({ name, effects }) => {
+                const effectState = getEffectState(data.find(i => i.name === name));
+                const nameClass = selectedColors[name] || (effectState === 0 ? effectClasses.mixed : effectState === 1 ? effectClasses.positive : effectClasses.negative);
+                const orderedEffects = selectedEffect ? [selectedEffect, ...effects.filter(e => e !== selectedEffect)] : effects;
+                return `<tr>
+                    <td class="${nameClass}" data-name="${name}">${name}</td>
+                    ${orderedEffects.map(effect => `<td class="${getEffectClass(effect)} effect-cell" data-effect="${effect}">${effect}</td>`).join('')}
+                </tr>`;
+            }).join(''));
+        $backBtn.toggle(!!selectedEffect);
+    };
+
+    const renderCombinationTable = () => {
+    const selectedItems = Array.from(selectedNames).map(name => data.find(i => i.name === name));
+
+    if (selectedItems.length === 0) {
+        $combinationTableBody.empty();
+        $combinationTable.hide();
+        return;
+    }
+
+    const focusOnPositive = isFirstNamePositive;
+    let effectsToShow = new Set();
+    let effectsToExclude = new Set();
+
+    selectedItems.forEach(item => {
+        item.effects.forEach(effect => {
+            if ((focusOnPositive && positiveEffects.has(effect)) || (!focusOnPositive && negativeEffects.has(effect))) {
+                effectsToShow.add(effect);
+            } else {
+                effectsToExclude.add(effect);
+            }
+        });
+    });
+
+    let candidateNames = new Set();
+    effectsToShow.forEach(effect => {
+        if (effectsData[effect]) {
+            effectsData[effect].forEach(name => {
+                if (!selectedNames.has(name)) {
+                    candidateNames.add(name);
+                }
+            });
+        }
+    });
+
+    let finalCombinationNames = new Set();
+    candidateNames.forEach(name => {
+        const item = data.find(i => i.name === name);
+        let hasExcludedEffect = false;
+
+        item.effects.forEach(effect => {
+            if (effectsToExclude.has(effect)) {
+                hasExcludedEffect = true;
+            }
+        });
+
+        if (!hasExcludedEffect) {
+            finalCombinationNames.add(name);
+        }
+    });
+
+    const sortedNames = Array.from(finalCombinationNames).sort((a, b) => a.localeCompare(b));
+
+    $combinationTableBody.empty().append(sortedNames.map(name => {
+        const item = data.find(i => i.name === name);
+        const effectState = getEffectState(item);
+        const nameClass = effectState === 0 ? effectClasses.mixed : effectState === 1 ? effectClasses.positive : effectState === -1 ? effectClasses.negative : '';
+        return `<tr>
+            <td class="${nameClass}" data-name="${name}">${name}</td>
+            ${item.effects.map(effect => `<td class="${getEffectClass(effect)}">${effect}</td>`).join('')}
+        </tr>`;
+    }).join(''));
+
+    $combinationTable.toggle(finalCombinationNames.size > 0);
+};
+
+// Обработчик клика для ячеек name в таблице сочетаний
+$(document).on('click', '#combination-table td[data-name]', function (event) {
+    const name = $(this).data('name');
+    if (selectedNames.has(name) || $selectionTableBody.children().length >= MAX_SELECTION_COUNT) return;
+
+    // Получаем состояние эффекта и определяем, можно ли его добавить
+    const effectState = getEffectState(data.find(i => i.name === name));
+    const selectedClass = effectState === 0 ? ((event.pageX - $(this).offset().left) < $(this).width() / 2 ? effectClasses.negative : effectClasses.positive) :
+                            effectState === 1 ? effectClasses.positive : effectClasses.negative;
+
+    // Проверка, можно ли добавить эффект
+    if (!canAddEffect(name, selectedClass)) {
+        return; // Если добавить нельзя, выходим из функции
+    }
+
+    // Устанавливаем первый эффект, если он еще не был установлен
+    if (isFirstNamePositive === null) {
+        isFirstNamePositive = (selectedClass === effectClasses.positive);
+    }
+
+    selectedNames.add(name);
+    addToSelectionTable(name, selectedClass);
+    $(this).closest('tr').hide();
+});
+
+
+    $('#menu-btn').click(() => $effectsMenu.toggle());
+
+    $(document).on('click', '.effect-btn', function () {
+        selectedEffect = $(this).text();
+        renderTable(data.filter(item => item.effects.includes(selectedEffect)));
+        $effectsMenu.hide();
+    });
+
+    $search.on('input', function () { searchQuery = $(this).val(); renderTable(data); });
+    $backBtn.click(() => { searchQuery = ''; selectedEffect = null; renderTable(data); });
+
+    const canAddEffect = (name, selectedClass) => {
+    // Проверяем, можно ли добавить эффект, основываясь на первом выбранном эффекте
+    if (isFirstNamePositive === null) return true; // Первый эффект еще не выбран
+
+    const effectState = getEffectState(data.find(i => i.name === name));
+    if (isFirstNamePositive && effectState === -1) {
+        return false; // Если первый эффект был положительным, запрещаем добавлять полностью отрицательный
+    }
+    if (!isFirstNamePositive && effectState === 1) {
+        return false; // Если первый эффект был отрицательным, запрещаем добавлять полностью положительный
+    }
+
+    return true; // В остальных случаях эффект можно добавить
+};
+
+// При добавлении элемента в таблицу:
+$(document).on('click', '#data-table td:first-child', function (event) {
+    const name = $(this).data('name');
+    if (selectedNames.has(name) || $selectionTableBody.children().length >= MAX_SELECTION_COUNT) return;
+
+    // Получаем состояние эффекта и определяем, можно ли его добавить
+    const effectState = getEffectState(data.find(i => i.name === name));
+    const selectedClass = effectState === 0 ? ((event.pageX - $(this).offset().left) < $(this).width() / 2 ? effectClasses.negative : effectClasses.positive) :
+                            effectState === 1 ? effectClasses.positive : effectClasses.negative;
+
+    // Проверка, можно ли добавить эффект
+    if (!canAddEffect(name, selectedClass)) {
+        return; // Если добавить нельзя, выходим из функции
+    }
+
+    // Устанавливаем первый эффект, если он еще не был установлен
+    if (isFirstNamePositive === null) {
+        isFirstNamePositive = (selectedClass === effectClasses.positive);
+    }
+
+    selectedNames.add(name);
+    addToSelectionTable(name, selectedClass);
+    $(this).closest('tr').hide();
+});
+
+     const addToSelectionTable = (name, selectedClass) => {
+    selectedColors[name] = selectedClass; // Сохраняем исходный класс, он может пригодиться в будущем
+
+    const item = data.find(i => i.name === name);
+    // Всегда используем тот же цвет, что был выбран для первого элемента
+    const finalClass = isFirstNamePositive ? effectClasses.positive : effectClasses.negative;
+
+    $selectionTableBody.append(`<tr>
+            <td class="${finalClass}"><span>${name}</span><button class="remove-btn" data-name="${name}">Удалить</button></td>
+            ${item.effects.map(effect => `<td class="${getEffectClass(effect)}">${effect}</td>`).join('')}
+        </tr>`).parent().show();
+
+    renderCombinationTable();
+};
+
+
+
+    $(document).on('click', '.remove-btn', function () {
+    const name = $(this).data('name');
+    selectedNames.delete(name);
+    $(this).closest('tr').remove();
+    $dataTableBody.find(`tr:has(td[data-name="${name}"])`).show();
+
+    // Если после удаления таблица выбора пустая, сбрасываем isFirstNamePositive
+    if ($selectionTableBody.children().length === 0) {
+        isFirstNamePositive = null; // Сброс первого эффекта
+    }
+
+    renderCombinationTable();
+    if (!selectedNames.size) $selectionTable.hide();
+});
+
+// Очистка всех данных, включая сброс первого эффекта
+$('#remove-all-btn').click(() => {
+    selectedNames.clear(); // Очистка всех выбранных имен
+    selectedColors = {}; // Очистка всех цветов выделения
+    isFirstNamePositive = null; // Сброс первого эффекта
+    $selectionTableBody.empty().parent().hide(); // Очистка таблицы выбора
+    $combinationTable.hide(); // Скрытие таблицы комбинаций
+    renderTable(data); // Восстановление основной таблицы в исходное состояние
+});
+
+
+    $('#remove-all-btn').click(() => {
+    selectedNames.clear(); // Очистка всех выбранных имен
+    selectedColors = {}; // Очистка всех цветов выделения
+    selectedEffect = null; //костыль, чтобы не появлялся 6 столбец
+    isFirstNamePositive = null; // Сброс первого эффекта
+    $selectionTableBody.empty().parent().hide(); // Очистка таблицы выбора
+    $combinationTable.hide(); // Скрытие таблицы комбинаций
+    renderTable(data); // Восстановление основной таблицы в исходное состояние
+});
+
+
+    $(document).on('click', '.effect-cell', function () {
+        selectedEffect = $(this).data('effect');
+        renderTable(data.filter(item => item.effects.includes(selectedEffect)));
+    });
+
+    loadData();
+});
+
+
+    </script>
+</body>
+</html>
