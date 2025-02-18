@@ -23,6 +23,16 @@
         .negative { background-color: #f8d7da; }
         .mixed { background: linear-gradient(90deg, #f8d7da 50%, #d4edda 50%); }
         .controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        #data-table, #selection-table, #combination-table {
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        #data-table th, #selection-table th, #combination-table th,
+        #data-table td, #selection-table td, #combination-table td {
+            width: 150px;  /* Adjust this width as necessary */
+            word-wrap: break-word;
+        }
     </style>
 </head>
 <body>
@@ -208,7 +218,6 @@ $(document).ready(() => {
 $(document).on('click', '#combination-table td[data-name]', function (event) {
     const name = $(this).data('name');
     $('html, body').animate({ scrollTop: 0 }, 'fast');
-
     if (selectedNames.has(name) || $selectionTableBody.children().length >= MAX_SELECTION_COUNT) return;
 
     // Получаем состояние эффекта и определяем, можно ли его добавить
