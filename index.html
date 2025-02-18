@@ -207,6 +207,8 @@ $(document).ready(() => {
 // Обработчик клика для ячеек name в таблице сочетаний
 $(document).on('click', '#combination-table td[data-name]', function (event) {
     const name = $(this).data('name');
+    $('html, body').animate({ scrollTop: 0 }, 'fast');
+
     if (selectedNames.has(name) || $selectionTableBody.children().length >= MAX_SELECTION_COUNT) return;
 
     // Получаем состояние эффекта и определяем, можно ли его добавить
@@ -259,6 +261,8 @@ $(document).on('click', '#combination-table td[data-name]', function (event) {
 // При добавлении элемента в таблицу:
 $(document).on('click', '#data-table td:first-child', function (event) {
     const name = $(this).data('name');
+    $('html, body').animate({ scrollTop: 0 }, 'fast');
+
     if (selectedNames.has(name) || $selectionTableBody.children().length >= MAX_SELECTION_COUNT) return;
 
     // Получаем состояние эффекта и определяем, можно ли его добавить
