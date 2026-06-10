@@ -19,6 +19,7 @@ $(document).ready(() => {
     'ccbgssse040-advobgobs': 'Гоблины',
     'ccbgssse067-daedinv': 'Причина (The Cause)',
     'cckrtsee001_altar': 'Горькая чаша',
+    'cctwbsee001-puzzledungeon': 'Забытые времена года',
     CACO: 'CACO',
     Dawnguard: 'Стража Рассвета (Dawnguard)',
     Dragonborn: 'Драконорожденный (Dragonborn)',
@@ -28,7 +29,8 @@ $(document).ready(() => {
     '_ResoursePack',
     'ccbgssse003-zombies',
     'ccbgssse040-advobgobs',
-    'cckrtsee001_altar'
+    'cckrtsee001_altar',
+    'cctwbsee001-puzzledungeon'
   ].map(folderName => folderName.toLowerCase()));
   const FALLBACK_ADDON_DATA_PATHS = [
     'data/CACO/data.json',
@@ -97,6 +99,11 @@ $(document).ready(() => {
       console.warn(`Не удалось загрузить необязательный файл ${path}`, error);
       return null;
     }
+  };
+
+  const fetchOptionalJsonSet = async paths => {
+    const responses = await Promise.all(paths.map(fetchOptionalJson));
+    return responses.filter(Boolean);
   };
 
   const uniqueSortedPaths = paths => Array.from(new Set(paths))
@@ -664,15 +671,15 @@ $(document).ready(() => {
   const loadActiveData = async () => {
     const currentLoadToken = ++dataLoadToken;
     const activeAddonDataPaths = getActiveAddonDataPaths();
-    const dataPaths = [ROOT_DATA_PATH, ...activeAddonDataPaths];
     const effectPolarityPaths = [ROOT_EFFECT_POLARITY_PATH, ...activeAddonDataPaths.map(getEffectPolarityPath)];
 
     showMessageRow('Загрузка данных...');
     setAddonControlsDisabled(true);
 
     try {
-      const [dataSets, effectPolaritySets] = await Promise.all([
-        Promise.all(dataPaths.map(fetchJson)),
+      const [rootDataSet, addonDataSets, effectPolaritySets] = await Promise.all([
+        fetchJson(ROOT_DATA_PATH),
+        fetchOptionalJsonSet(activeAddonDataPaths),
         Promise.all(effectPolarityPaths.map((path, index) => (
           index === 0 ? fetchJson(path) : fetchOptionalJson(path)
         )))
@@ -680,7 +687,7 @@ $(document).ready(() => {
 
       if (currentLoadToken !== dataLoadToken) return;
 
-      ingredients = mergeIngredients(dataSets);
+      ingredients = mergeIngredients([rootDataSet, ...addonDataSets]);
       mergeEffectPolarity(effectPolaritySets);
       rebuildIndexes();
       reconcileSelectionWithLoadedData();
