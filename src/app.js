@@ -1,10 +1,51 @@
 $(document).ready(() => {
   const MAX_SELECTION_COUNT = 3;
+  const DATA_ROOT = 'data';
+  const DATA_FILE_NAME = 'data.json';
+  const EFFECT_POLARITY_FILE_NAME = 'positive_negative_data.json';
+  const ROOT_DATA_PATH = `${DATA_ROOT}/${DATA_FILE_NAME}`;
+  const ROOT_EFFECT_POLARITY_PATH = `${DATA_ROOT}/${EFFECT_POLARITY_FILE_NAME}`;
   const POLARITY = {
     positive: 'positive',
     negative: 'negative',
     mixed: 'mixed'
   };
+  const ADDON_DISPLAY_NAMES = new Map(Object.entries({
+    '_ResoursePack': 'Листья алоэ',
+    'ccBGSSSE001-Fish': 'Рыбалка',
+    'ccbgssse003-zombies': 'Чума мертвецов',
+    'ccBGSSSE025-AdvDSGS': 'Святые и Соблазнители',
+    'ccbgssse037-curios': 'Редкие диковинки',
+    'ccbgssse040-advobgobs': 'Гоблины',
+    'ccbgssse067-daedinv': 'Причина (The Cause)',
+    'cckrtsee001_altar': 'Горькая чаша',
+    CACO: 'CACO',
+    Dawnguard: 'Стража Рассвета (Dawnguard)',
+    Dragonborn: 'Драконорожденный (Dragonborn)',
+    Hearthfire: 'Домашний очаг (Hearthfire)'
+  }).map(([folderName, displayName]) => [folderName.toLowerCase(), displayName]));
+  const DEFAULT_ENABLED_ADDON_FOLDERS = new Set([
+    '_ResoursePack',
+    'ccbgssse003-zombies',
+    'ccbgssse040-advobgobs',
+    'cckrtsee001_altar'
+  ].map(folderName => folderName.toLowerCase()));
+  const FALLBACK_ADDON_DATA_PATHS = [
+    'data/CACO/data.json',
+    'data/Creation Club/_ResoursePack/data.json',
+    'data/Creation Club/ccBGSSSE001-Fish/data.json',
+    'data/Creation Club/ccbgssse003-zombies/data.json',
+    'data/Creation Club/ccBGSSSE025-AdvDSGS/data.json',
+    'data/Creation Club/ccbgssse037-curios/data.json',
+    'data/Creation Club/ccbgssse040-advobgobs/data.json',
+    'data/Creation Club/ccbgssse067-daedinv/data.json',
+    'data/Creation Club/cckrtsee001_altar/data.json',
+    'data/Creation Club/cctwbsee001-puzzledungeon/data.json',
+    'data/DLC/Dawnguard/data.json',
+    'data/DLC/Dragonborn/data.json',
+    'data/DLC/Hearthfire/data.json',
+    'data/Skyrim Extended Cut - Saints and Seducers/data.json'
+  ];
 
   let ingredients = [];
   let ingredientByName = new Map();
@@ -16,7 +57,12 @@ $(document).ready(() => {
   let searchQuery = '';
   let selectedEffect = null;
   let selectedPolarity = null;
+  let availableAddons = [];
+  let selectedAddonIds = new Set();
+  let dataLoadToken = 0;
 
+  const $addonsPanel = $('#addons-panel');
+  const $addonsList = $('#addons-list');
   const $effectsMenu = $('#effects-menu');
   const $dataTableBody = $('#data-table tbody');
   const $selectionTableBody = $('#selection-table tbody');
@@ -28,6 +74,199 @@ $(document).ready(() => {
   const $removeAllBtn = $('#remove-all-btn');
 
   const normalizeSearch = value => value.trim().toLowerCase();
+  const normalizeAddonKey = value => value.toLowerCase();
+  const encodePath = path => path.split('/').map(encodeURIComponent).join('/');
+
+  const fetchJson = async path => {
+    const response = await fetch(encodePath(path));
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${path}`);
+    }
+
+    return response.json();
+  };
+
+  const fetchOptionalJson = async path => {
+    try {
+      const response = await fetch(encodePath(path));
+
+      if (!response.ok) return null;
+      return response.json();
+    } catch (error) {
+      console.warn(`Не удалось загрузить необязательный файл ${path}`, error);
+      return null;
+    }
+  };
+
+  const uniqueSortedPaths = paths => Array.from(new Set(paths))
+    .filter(path => path && path !== ROOT_DATA_PATH)
+    .sort((a, b) => a.localeCompare(b, 'ru'));
+
+  const getFolderNameFromDataPath = dataPath => {
+    const parts = dataPath.split('/');
+    return parts.length >= 2 ? parts[parts.length - 2] : '';
+  };
+
+  const getDirectoryPathFromDataPath = dataPath => dataPath.replace(/\/data\.json$/i, '');
+
+  const createAddonDefinitions = dataPaths => uniqueSortedPaths(dataPaths)
+    .map(dataPath => {
+      const directoryPath = getDirectoryPathFromDataPath(dataPath);
+      const folderName = getFolderNameFromDataPath(dataPath);
+      const normalizedFolderName = normalizeAddonKey(folderName);
+      const defaultEnabled = DEFAULT_ENABLED_ADDON_FOLDERS.has(normalizedFolderName);
+
+      return {
+        id: directoryPath,
+        dataPath,
+        folderName,
+        name: ADDON_DISPLAY_NAMES.get(normalizedFolderName) || folderName,
+        defaultEnabled,
+        selectable: !defaultEnabled
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'ru') || a.id.localeCompare(b.id, 'ru'));
+
+  const getGitHubPagesRepo = () => {
+    const match = window.location.hostname.match(/^([^.]+)\.github\.io$/i);
+    const configuredRepository = $('meta[name="github-repository"]').attr('content') || '';
+
+    if (match) {
+      const owner = match[1];
+      const pathSegments = window.location.pathname.split('/').filter(Boolean);
+      const firstSegment = pathSegments[0] || '';
+      const repo = firstSegment && !firstSegment.endsWith('.html')
+        ? firstSegment
+        : `${owner}.github.io`;
+
+      return { owner, repo };
+    }
+
+    const [owner, repo] = configuredRepository.split('/');
+    return owner && repo ? { owner, repo } : null;
+  };
+
+  const listGitHubDirectory = async (repoInfo, directoryPath) => {
+    const response = await fetch(
+      `https://api.github.com/repos/${repoInfo.owner}/${repoInfo.repo}/contents/${encodePath(directoryPath)}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`GitHub API ${response.status}: ${directoryPath}`);
+    }
+
+    const entries = await response.json();
+    return Array.isArray(entries) ? entries : [];
+  };
+
+  const walkGitHubDataDirectory = async (repoInfo, directoryPath = DATA_ROOT) => {
+    const entries = await listGitHubDirectory(repoInfo, directoryPath);
+    const dataPaths = [];
+
+    if (
+      directoryPath !== DATA_ROOT &&
+      entries.some(entry => entry.type === 'file' && entry.name === DATA_FILE_NAME)
+    ) {
+      dataPaths.push(`${directoryPath}/${DATA_FILE_NAME}`);
+    }
+
+    const childPaths = await Promise.all(
+      entries
+        .filter(entry => entry.type === 'dir')
+        .map(entry => walkGitHubDataDirectory(repoInfo, entry.path))
+    );
+
+    return dataPaths.concat(...childPaths);
+  };
+
+  const discoverGitHubPagesDataPaths = async () => {
+    const repoInfo = getGitHubPagesRepo();
+    if (!repoInfo) return [];
+    return walkGitHubDataDirectory(repoInfo);
+  };
+
+  const isLocalHost = () => ['', 'localhost', '127.0.0.1'].includes(window.location.hostname);
+
+  const getDirectoryListingEntries = (html, directoryPath) => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const directoryUrl = new URL(`${directoryPath}/`, window.location.href);
+    const dataRootUrl = new URL(`${DATA_ROOT}/`, window.location.href);
+    const entries = [];
+
+    doc.querySelectorAll('a[href]').forEach(link => {
+      const href = link.getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('?')) return;
+
+      const url = new URL(href, directoryUrl);
+      if (url.origin !== window.location.origin) return;
+      if (!url.pathname.startsWith(dataRootUrl.pathname)) return;
+      if (url.pathname === directoryUrl.pathname) return;
+
+      const relativePath = decodeURIComponent(url.pathname.slice(dataRootUrl.pathname.length))
+        .replace(/\/$/, '');
+
+      if (!relativePath || relativePath.startsWith('..')) return;
+
+      entries.push({
+        path: `${DATA_ROOT}/${relativePath}`,
+        isDirectory: href.endsWith('/') || url.pathname.endsWith('/')
+      });
+    });
+
+    return entries;
+  };
+
+  const walkDirectoryListing = async (directoryPath = DATA_ROOT, visited = new Set()) => {
+    const normalizedDirectoryPath = directoryPath.replace(/\/$/, '');
+    if (visited.has(normalizedDirectoryPath)) return [];
+    visited.add(normalizedDirectoryPath);
+
+    let response;
+
+    try {
+      response = await fetch(`${encodePath(normalizedDirectoryPath)}/`);
+    } catch (error) {
+      return [];
+    }
+
+    if (!response.ok) return [];
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('text/html')) return [];
+
+    const entries = getDirectoryListingEntries(await response.text(), normalizedDirectoryPath);
+    const dataPaths = entries.some(entry => !entry.isDirectory && entry.path === `${normalizedDirectoryPath}/${DATA_FILE_NAME}`)
+      && normalizedDirectoryPath !== DATA_ROOT
+      ? [`${normalizedDirectoryPath}/${DATA_FILE_NAME}`]
+      : [];
+
+    const childPaths = await Promise.all(
+      entries
+        .filter(entry => entry.isDirectory)
+        .map(entry => walkDirectoryListing(entry.path, visited))
+    );
+
+    return dataPaths.concat(...childPaths);
+  };
+
+  const discoverAddonDataPaths = async () => {
+    const discoveryStrategies = isLocalHost()
+      ? [walkDirectoryListing, discoverGitHubPagesDataPaths]
+      : [discoverGitHubPagesDataPaths, walkDirectoryListing];
+
+    for (const discover of discoveryStrategies) {
+      try {
+        const dataPaths = uniqueSortedPaths(await discover());
+        if (dataPaths.length) return dataPaths;
+      } catch (error) {
+        console.warn('Не удалось автоматически найти дополнения:', error);
+      }
+    }
+
+    return FALLBACK_ADDON_DATA_PATHS;
+  };
 
   const getEffectClass = effect => {
     if (positiveEffects.has(effect)) return POLARITY.positive;
@@ -306,39 +545,187 @@ $(document).ready(() => {
     renderTable();
   };
 
-  const showLoadError = () => {
+  const showMessageRow = message => {
     $dataTableBody.empty().append(
       $('<tr>').append(
         $('<td>')
           .attr('colspan', 5)
-          .text('Не удалось загрузить данные. Проверьте файлы в папке data.')
+          .text(message)
       )
     );
   };
 
-  const loadData = async () => {
+  const showLoadError = () => {
+    showMessageRow('Не удалось загрузить данные. Проверьте файлы в папке data.');
+  };
+
+  const mergeIngredients = dataSets => {
+    const mergedByName = new Map();
+
+    dataSets.forEach(dataSet => {
+      if (!Array.isArray(dataSet)) return;
+
+      dataSet.forEach(ingredient => {
+        if (!ingredient || !ingredient.name || !Array.isArray(ingredient.effects)) return;
+        mergedByName.set(ingredient.name, ingredient);
+      });
+    });
+
+    return Array.from(mergedByName.values());
+  };
+
+  const mergeEffectPolarity = dataSets => {
+    const polarityByEffect = new Map();
+
+    dataSets.forEach(dataSet => {
+      if (!dataSet) return;
+
+      (dataSet.positive_effects || []).forEach(effect => {
+        polarityByEffect.set(effect, POLARITY.positive);
+      });
+
+      (dataSet.negative_effects || []).forEach(effect => {
+        polarityByEffect.set(effect, POLARITY.negative);
+      });
+    });
+
+    positiveEffects = new Set();
+    negativeEffects = new Set();
+
+    polarityByEffect.forEach((polarity, effect) => {
+      if (polarity === POLARITY.positive) {
+        positiveEffects.add(effect);
+      }
+
+      if (polarity === POLARITY.negative) {
+        negativeEffects.add(effect);
+      }
+    });
+  };
+
+  const reconcileSelectionWithLoadedData = () => {
+    selectedNames.forEach(name => {
+      if (!ingredientByName.has(name)) {
+        selectedNames.delete(name);
+        selectedClasses.delete(name);
+      }
+    });
+
+    if (selectedNames.size === 0) {
+      selectedPolarity = null;
+    }
+
+    if (selectedEffect && !namesByEffect.has(selectedEffect)) {
+      selectedEffect = null;
+    }
+  };
+
+  const getActiveAddonDataPaths = () => availableAddons
+    .filter(addon => addon.defaultEnabled || selectedAddonIds.has(addon.id))
+    .map(addon => addon.dataPath);
+
+  const getEffectPolarityPath = dataPath => dataPath.replace(/data\.json$/i, EFFECT_POLARITY_FILE_NAME);
+
+  const setAddonControlsDisabled = disabled => {
+    $addonsList.find('input[type="checkbox"]').prop('disabled', disabled);
+  };
+
+  const renderAddons = () => {
+    const selectableAddons = availableAddons.filter(addon => addon.selectable);
+
+    if (!selectableAddons.length) {
+      $addonsPanel.hide();
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    selectableAddons.forEach((addon, index) => {
+      const inputId = `addon-${index}`;
+      const $label = $('<label>')
+        .addClass('addon-option')
+        .attr('for', inputId)
+        .attr('title', addon.id);
+
+      $('<input>')
+        .attr({ type: 'checkbox', id: inputId })
+        .data('addonId', addon.id)
+        .prop('checked', selectedAddonIds.has(addon.id))
+        .appendTo($label);
+
+      $('<span>').text(addon.name).appendTo($label);
+      $label.appendTo(fragment);
+    });
+
+    $addonsList.empty().append(fragment);
+    $addonsPanel.show();
+  };
+
+  const loadActiveData = async () => {
+    const currentLoadToken = ++dataLoadToken;
+    const activeAddonDataPaths = getActiveAddonDataPaths();
+    const dataPaths = [ROOT_DATA_PATH, ...activeAddonDataPaths];
+    const effectPolarityPaths = [ROOT_EFFECT_POLARITY_PATH, ...activeAddonDataPaths.map(getEffectPolarityPath)];
+
+    showMessageRow('Загрузка данных...');
+    setAddonControlsDisabled(true);
+
     try {
-      const [dataResponse, effectsResponse] = await Promise.all([
-        $.getJSON('data/data.json'),
-        $.getJSON('data/positive_negative_data.json')
+      const [dataSets, effectPolaritySets] = await Promise.all([
+        Promise.all(dataPaths.map(fetchJson)),
+        Promise.all(effectPolarityPaths.map((path, index) => (
+          index === 0 ? fetchJson(path) : fetchOptionalJson(path)
+        )))
       ]);
 
-      ingredients = dataResponse;
-      positiveEffects = new Set(effectsResponse.positive_effects || []);
-      negativeEffects = new Set(effectsResponse.negative_effects || []);
+      if (currentLoadToken !== dataLoadToken) return;
 
+      ingredients = mergeIngredients(dataSets);
+      mergeEffectPolarity(effectPolaritySets);
       rebuildIndexes();
+      reconcileSelectionWithLoadedData();
       renderEffectsMenu();
       renderAllTables();
     } catch (error) {
+      if (currentLoadToken !== dataLoadToken) return;
       console.error('Ошибка загрузки данных:', error);
+      showLoadError();
+    } finally {
+      if (currentLoadToken === dataLoadToken) {
+        setAddonControlsDisabled(false);
+      }
+    }
+  };
+
+  const initializeData = async () => {
+    showMessageRow('Загрузка данных...');
+
+    try {
+      availableAddons = createAddonDefinitions(await discoverAddonDataPaths());
+      renderAddons();
+      await loadActiveData();
+    } catch (error) {
+      console.error('Ошибка инициализации данных:', error);
       showLoadError();
     }
   };
 
   $effectsMenu.hide();
+  $addonsPanel.hide();
 
   $('#menu-btn').on('click', () => $effectsMenu.toggle());
+
+  $addonsList.on('change', 'input[type="checkbox"]', function () {
+    const addonId = $(this).data('addonId');
+
+    if (this.checked) {
+      selectedAddonIds.add(addonId);
+    } else {
+      selectedAddonIds.delete(addonId);
+    }
+
+    loadActiveData();
+  });
 
   $search.on('input', function () {
     searchQuery = normalizeSearch($(this).val());
@@ -370,5 +757,5 @@ $(document).ready(() => {
     setSelectedEffect($(this).data('effect'));
   });
 
-  loadData();
+  initializeData();
 });
