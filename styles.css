@@ -1,7 +1,9 @@
 * { box-sizing: border-box; }
 :root {
-    --positive-bg: #a6dfb0;
-    --negative-bg: #f0a0a8;
+    --positive-bg: #d4edda;
+    --negative-bg: #f8d7da;
+    --hint-positive-bg: #a6dfb0;
+    --hint-negative-bg: #f0a0a8;
 }
 body { font-family: Arial, sans-serif; margin: 12px; }
 button, input { font: inherit; }
@@ -15,7 +17,7 @@ th { background-color: #f2f2f2; cursor: default; }
     font-weight: 700;
 }
 .brew-hint-cell {
-    background: linear-gradient(90deg, var(--negative-bg) 50%, var(--positive-bg) 50%);
+    background: linear-gradient(90deg, var(--hint-negative-bg) 50%, var(--hint-positive-bg) 50%);
     padding: 0;
     cursor: default;
 }
