@@ -650,6 +650,32 @@ $(document).ready(() => {
     $addonsList.find('input[type="checkbox"]').prop('disabled', disabled);
   };
 
+  const getRootAddonCountLabel = () => {
+    if (!Number.isInteger(rootIngredientCount)) {
+      return 'Стандартный data.json';
+    }
+
+    const hiddenAddonParts = availableAddons
+      .filter(addon => addon.defaultEnabled)
+      .map(addon => ({
+        name: addon.name,
+        count: addonIngredientCounts.get(addon.id)
+      }))
+      .filter(addon => Number.isInteger(addon.count));
+
+    if (!hiddenAddonParts.length) {
+      return `Стандартный data.json, ${rootIngredientCount}`;
+    }
+
+    const total = hiddenAddonParts.reduce((sum, addon) => sum + addon.count, rootIngredientCount);
+    const formula = [
+      rootIngredientCount,
+      ...hiddenAddonParts.map(addon => `${addon.name} (${addon.count})`)
+    ].join(' + ');
+
+    return `Стандартный data.json, ${formula} = ${total}`;
+  };
+
   const renderAddons = () => {
     const selectableAddons = availableAddons.filter(addon => addon.selectable);
     const fragment = document.createDocumentFragment();
@@ -658,9 +684,6 @@ $(document).ready(() => {
       .addClass('addon-option')
       .attr('for', 'addon-root-data')
       .attr('title', ROOT_DATA_PATH);
-    const rootLabelText = Number.isInteger(rootIngredientCount)
-      ? `Стандартный data.json, ${rootIngredientCount}`
-      : 'Стандартный data.json';
 
     $('<input>')
       .attr({ type: 'checkbox', id: 'addon-root-data' })
@@ -668,7 +691,7 @@ $(document).ready(() => {
       .prop('checked', rootDataEnabled)
       .appendTo($rootLabel);
 
-    $('<span>').text(rootLabelText).appendTo($rootLabel);
+    $('<span>').text(getRootAddonCountLabel()).appendTo($rootLabel);
     $rootLabel.appendTo(fragment);
 
     selectableAddons.forEach((addon, index) => {
