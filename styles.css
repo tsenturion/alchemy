@@ -26,10 +26,7 @@ th { background-color: #f2f2f2; }
     min-height: 32px;
     cursor: pointer;
     font-weight: 700;
-    list-style: none;
 }
-.addons-panel summary::-webkit-details-marker { display: none; }
-.addons-panel summary::marker { content: ''; }
 .addons-list {
     display: flex;
     flex-wrap: wrap;
