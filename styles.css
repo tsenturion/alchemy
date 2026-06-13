@@ -14,14 +14,17 @@ th { background-color: #f2f2f2; cursor: default; }
     padding: 0;
     cursor: default;
 }
+.brew-hint-row {
+    display: flex;
+    width: 100%;
+}
 .brew-hint-cell span {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
-    width: 50%;
+    flex: 1 0 max-content;
     min-height: 40px;
     padding: 8px;
-    vertical-align: top;
     white-space: nowrap;
 }
 .brew-hint-poison {
@@ -124,6 +127,11 @@ th { background-color: #f2f2f2; cursor: default; }
     width: 80%;
 }
 
+#data-table .brew-hint-cell {
+    width: 260px;
+    min-width: 260px;
+}
+
 @media (max-width: 700px) {
     body { margin: 8px; }
     .controls {
@@ -162,10 +170,6 @@ th { background-color: #f2f2f2; cursor: default; }
     #data-table .main-hint-effects {
         width: 600px;
         min-width: 600px;
-    }
-    #data-table .brew-hint-cell {
-        width: 260px;
-        min-width: 260px;
     }
     th, td {
         padding: 7px;
