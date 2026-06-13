@@ -3,8 +3,9 @@ body { font-family: Arial, sans-serif; margin: 12px; }
 button, input { font: inherit; }
 button { min-height: 40px; }
 table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-th, td { border: 1px solid black; padding: 8px; text-align: left; cursor: pointer; }
-th { background-color: #f2f2f2; }
+th, td { border: 1px solid black; padding: 8px; text-align: left; }
+td { cursor: pointer; }
+th { background-color: #f2f2f2; cursor: default; }
 .table-title {
     margin-top: 14px;
     font-weight: 700;
@@ -16,10 +17,12 @@ th { background-color: #f2f2f2; }
 .brew-hint-cell span {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     width: 50%;
     min-height: 40px;
     padding: 8px;
     vertical-align: top;
+    white-space: nowrap;
 }
 .brew-hint-poison {
     background-color: #f8d7da;
@@ -159,6 +162,10 @@ th { background-color: #f2f2f2; }
     #data-table .main-hint-effects {
         width: 600px;
         min-width: 600px;
+    }
+    #data-table .brew-hint-cell {
+        width: 260px;
+        min-width: 260px;
     }
     th, td {
         padding: 7px;
