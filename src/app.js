@@ -430,7 +430,7 @@ $(document).ready(() => {
   const updateFilterControls = () => {
     $backBtn.toggle(Boolean(selectedEffect));
     $effectTitle.text(selectedEffect || '').toggle(Boolean(selectedEffect));
-    $mainHintRow.toggle(!selectedEffect);
+    $mainHintRow.toggle(!selectedEffect || selectedNames.size === 0);
   };
 
   const renderEffectsMenu = () => {
