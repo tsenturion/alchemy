@@ -801,7 +801,7 @@ $(document).ready(() => {
 
   $removeAllBtn.on('click', clearSelection);
 
-  $(document).on('click', '.effect-btn', function () {
+  $effectsMenu.on('click', '.effect-btn', function () {
     setSelectedEffect($(this).text());
     closeMenus();
   });
