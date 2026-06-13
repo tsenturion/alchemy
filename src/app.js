@@ -63,7 +63,8 @@ $(document).ready(() => {
   let selectedAddonIds = new Set();
   let dataLoadToken = 0;
 
-  const $addonsPanel = $('#addons-panel');
+  const $addonsBtn = $('#addons-btn');
+  const $addonsMenu = $('#addons-menu');
   const $addonsList = $('#addons-list');
   const $effectsMenu = $('#effects-menu');
   const $dataTableBody = $('#data-table tbody');
@@ -78,6 +79,7 @@ $(document).ready(() => {
   const normalizeSearch = value => value.trim().toLowerCase();
   const normalizeAddonKey = value => value.toLowerCase();
   const encodePath = path => path.split('/').map(encodeURIComponent).join('/');
+  const compareRu = (a, b) => a.localeCompare(b, 'ru', { sensitivity: 'base' });
 
   const fetchJson = async path => {
     const response = await fetch(encodePath(path));
@@ -108,7 +110,7 @@ $(document).ready(() => {
 
   const uniqueSortedPaths = paths => Array.from(new Set(paths))
     .filter(path => path && path !== ROOT_DATA_PATH)
-    .sort((a, b) => a.localeCompare(b, 'ru'));
+    .sort(compareRu);
 
   const getFolderNameFromDataPath = dataPath => {
     const parts = dataPath.split('/');
@@ -133,7 +135,7 @@ $(document).ready(() => {
         selectable: !defaultEnabled
       };
     })
-    .sort((a, b) => a.name.localeCompare(b.name, 'ru') || a.id.localeCompare(b.id, 'ru'));
+    .sort((a, b) => compareRu(a.name, b.name) || compareRu(a.id, b.id));
 
   const getGitHubPagesRepo = () => {
     const match = window.location.hostname.match(/^([^.]+)\.github\.io$/i);
@@ -368,7 +370,7 @@ $(document).ready(() => {
   };
 
   const renderEffectsMenu = () => {
-    const effects = Array.from(namesByEffect.keys()).sort((a, b) => a.localeCompare(b, 'ru'));
+    const effects = Array.from(namesByEffect.keys()).sort(compareRu);
     const fragment = document.createDocumentFragment();
 
     effects.forEach(effect => {
@@ -470,7 +472,7 @@ $(document).ready(() => {
         const ingredient = ingredientByName.get(name);
         return ingredient && !ingredient.effects.some(effect => effectsToExclude.has(effect));
       })
-      .sort((a, b) => a.localeCompare(b, 'ru'));
+      .sort(compareRu);
 
     const fragment = document.createDocumentFragment();
 
@@ -578,7 +580,8 @@ $(document).ready(() => {
       });
     });
 
-    return Array.from(mergedByName.values());
+    return Array.from(mergedByName.values())
+      .sort((a, b) => compareRu(a.name, b.name));
   };
 
   const mergeEffectPolarity = dataSets => {
@@ -641,7 +644,8 @@ $(document).ready(() => {
     const selectableAddons = availableAddons.filter(addon => addon.selectable);
 
     if (!selectableAddons.length) {
-      $addonsPanel.hide();
+      $addonsBtn.hide();
+      $addonsMenu.hide();
       return;
     }
 
@@ -665,7 +669,7 @@ $(document).ready(() => {
     });
 
     $addonsList.empty().append(fragment);
-    $addonsPanel.show();
+    $addonsBtn.show();
   };
 
   const loadActiveData = async () => {
@@ -718,10 +722,51 @@ $(document).ready(() => {
     }
   };
 
-  $effectsMenu.hide();
-  $addonsPanel.hide();
+  const positionMenu = ($button, $menu) => {
+    const isMobile = window.matchMedia('(max-width: 700px)').matches;
+    $menu.css('left', isMobile ? 0 : $button.position().left);
+  };
 
-  $('#menu-btn').on('click', () => $effectsMenu.toggle());
+  const closeMenus = () => {
+    $effectsMenu.hide();
+    $addonsMenu.hide();
+  };
+
+  const toggleMenu = ($button, $menu) => {
+    const shouldShow = !$menu.is(':visible');
+
+    closeMenus();
+
+    if (shouldShow) {
+      positionMenu($button, $menu);
+      $menu.show();
+    }
+  };
+
+  $effectsMenu.hide();
+  $addonsMenu.hide();
+
+  $('#menu-btn').on('click', event => {
+    event.stopPropagation();
+    toggleMenu($('#menu-btn'), $effectsMenu);
+  });
+
+  $addonsBtn.on('click', event => {
+    event.stopPropagation();
+    toggleMenu($addonsBtn, $addonsMenu);
+  });
+
+  $('.menu').on('click', event => {
+    event.stopPropagation();
+  });
+
+  $(document).on('click', closeMenus);
+
+  $(document).on('keydown', event => {
+    if (event.key === 'Escape') {
+      closeMenus();
+    }
+  });
 
   $addonsList.on('change', 'input[type="checkbox"]', function () {
     const addonId = $(this).data('addonId');
@@ -758,7 +803,7 @@ $(document).ready(() => {
 
   $(document).on('click', '.effect-btn', function () {
     setSelectedEffect($(this).text());
-    $effectsMenu.hide();
+    closeMenus();
   });
 
   $dataTableBody.on('click', '.effect-cell', function () {

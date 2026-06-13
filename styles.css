@@ -8,6 +8,11 @@ th { background-color: #f2f2f2; }
 .menu {
     display: none;
     position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 220px;
+    max-height: 70vh;
+    overflow-y: auto;
     background: white;
     border: 1px solid black;
     padding: 10px;
@@ -17,21 +22,10 @@ th { background-color: #f2f2f2; }
 .positive { background-color: #d4edda; }
 .negative { background-color: #f8d7da; }
 .mixed { background: linear-gradient(90deg, #f8d7da 50%, #d4edda 50%); }
-.addons-panel {
-    margin-bottom: 10px;
-    border: 1px solid #bbb;
-    padding: 8px;
-}
-.addons-panel summary {
-    min-height: 32px;
-    cursor: pointer;
-    font-weight: 700;
-}
 .addons-list {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 8px;
+    flex-direction: column;
+    gap: 6px;
 }
 .addon-option {
     display: inline-flex;
@@ -61,14 +55,11 @@ th { background-color: #f2f2f2; }
     table-layout: fixed;
     width: 100%;
     max-width: 100%;
-    display: block;
-    overflow-x: auto;
 }
 
 #data-table th, #selection-table th, #combination-table th,
 #data-table td, #selection-table td, #combination-table td {
-    width: 150px;
-    min-width: 150px;
+    width: 20%;
     word-wrap: break-word;
 }
 
@@ -84,14 +75,25 @@ th { background-color: #f2f2f2; }
     .button-group button {
         flex: 1 1 0;
     }
+    .menu {
+        left: 0;
+        right: 0;
+        min-width: 0;
+    }
     #search {
         width: 100%;
     }
-    .addons-list {
-        flex-direction: column;
-    }
     .addon-option {
         width: 100%;
+    }
+    #data-table, #selection-table, #combination-table {
+        display: block;
+        overflow-x: auto;
+    }
+    #data-table th, #selection-table th, #combination-table th,
+    #data-table td, #selection-table td, #combination-table td {
+        width: 150px;
+        min-width: 150px;
     }
     th, td {
         padding: 7px;
