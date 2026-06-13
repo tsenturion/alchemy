@@ -48,6 +48,12 @@ th { background-color: #f2f2f2; }
 }
 .controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .button-group { display: flex; gap: 8px; position: relative; }
+.search-group { display: flex; align-items: center; gap: 8px; }
+.visible-count {
+    min-width: 42px;
+    font-weight: 700;
+    text-align: right;
+}
 #search { min-height: 40px; padding: 8px; }
 #back-btn { display: none; }
 .remove-btn { margin-left: 8px; }
@@ -81,6 +87,9 @@ th { background-color: #f2f2f2; }
         min-width: 0;
     }
     #search {
+        width: 100%;
+    }
+    .search-group {
         width: 100%;
     }
     .addon-option {

@@ -72,6 +72,7 @@ $(document).ready(() => {
   const $selectionTableBody = $('#selection-table tbody');
   const $combinationTableBody = $('#combination-table tbody');
   const $search = $('#search');
+  const $visibleCount = $('#visible-count');
   const $backBtn = $('#back-btn');
   const $selectionTable = $('#selection-table');
   const $combinationTable = $('#combination-table');
@@ -391,8 +392,9 @@ $(document).ready(() => {
 
   const renderTable = () => {
     const fragment = document.createDocumentFragment();
+    const visibleIngredients = getVisibleIngredients();
 
-    getVisibleIngredients().forEach(ingredient => {
+    visibleIngredients.forEach(ingredient => {
       const effects = selectedEffect
         ? [selectedEffect, ...ingredient.effects.filter(effect => effect !== selectedEffect)]
         : ingredient.effects;
@@ -401,6 +403,7 @@ $(document).ready(() => {
     });
 
     $dataTableBody.empty().append(fragment);
+    $visibleCount.text(visibleIngredients.length);
     updateFilterControls();
   };
 
