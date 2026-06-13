@@ -69,7 +69,7 @@ def save_json(path: Path, data):
     if path.exists():
         backup = backup_file(path)
         if backup is not None:
-            print(f'Backed up {path.name} to {backup.relative_to(ROOT)}')
+            print(f'Создана резервная копия {path.name}: {backup.relative_to(ROOT)}')
     if add_module is not None:
         return add_module.save_json(path, data)
     with path.open('w', encoding='utf-8') as f:
@@ -81,7 +81,7 @@ def generate_caco_effects(caco_root: Path):
     caco_effects_path = caco_root / 'effects.json'
 
     if not caco_data_path.exists():
-        raise FileNotFoundError(f'CACO data.json not found: {caco_data_path}')
+        raise FileNotFoundError(f'Файл CACO data.json не найден: {caco_data_path}')
 
     caco_data = load_json(caco_data_path)
     effect_map = {}
@@ -202,6 +202,144 @@ def sync_effects_json(data_path: Path, effects_path: Path):
     return updated
 
 
+def build_effect_ingredient_map(data, shared_names):
+    shared = set(shared_names)
+    effect_map = {}
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        name = item.get('name')
+        if name not in shared:
+            continue
+        for effect in item.get('effects', []):
+            effect_map.setdefault(effect, set()).add(name)
+    return effect_map
+
+
+def intersection_count(left, right):
+    return sum(1 for item in left if item in right)
+
+
+def path_relative_to_root(path: Path):
+    try:
+        return str(path.resolve().relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def make_effect_match_entry(candidate):
+    return {
+        'стандартный_эффект': candidate['standard_effect'],
+        'эффект_caco': candidate['caco_effect'],
+        'общих_ингредиентов': candidate['shared_count'],
+        'ингредиентов_у_стандартного': candidate['standard_count'],
+        'ингредиентов_у_caco': candidate['caco_count'],
+        'сходство': round(candidate['similarity'], 4),
+        'примеры': candidate['examples'],
+    }
+
+
+def find_caco_effect_matches(data_path: Path, caco_data_path: Path, min_shared=2, min_similarity=0.5):
+    standard_data = load_json(data_path)
+    caco_data = load_json(caco_data_path)
+
+    standard_by_name = {
+        item.get('name'): item
+        for item in standard_data
+        if isinstance(item, dict) and item.get('name')
+    }
+    caco_by_name = {
+        item.get('name'): item
+        for item in caco_data
+        if isinstance(item, dict) and item.get('name')
+    }
+    shared_names = sorted(
+        set(standard_by_name).intersection(caco_by_name),
+        key=lambda value: value.lower(),
+    )
+
+    standard_effects = build_effect_ingredient_map(standard_data, shared_names)
+    caco_effects = build_effect_ingredient_map(caco_data, shared_names)
+    candidates = []
+
+    for standard_effect, standard_names in standard_effects.items():
+        for caco_effect, caco_names in caco_effects.items():
+            if standard_effect == caco_effect:
+                continue
+
+            shared_count = intersection_count(standard_names, caco_names)
+            if shared_count == 0:
+                continue
+
+            union_count = len(standard_names) + len(caco_names) - shared_count
+            common_examples = sorted(
+                (name for name in standard_names if name in caco_names),
+                key=lambda value: value.lower(),
+            )
+            candidates.append({
+                'standard_effect': standard_effect,
+                'caco_effect': caco_effect,
+                'shared_count': shared_count,
+                'standard_count': len(standard_names),
+                'caco_count': len(caco_names),
+                'similarity': shared_count / union_count,
+                'examples': common_examples[:10],
+            })
+
+    candidates.sort(
+        key=lambda item: (
+            -item['similarity'],
+            -item['shared_count'],
+            item['standard_effect'].lower(),
+            item['caco_effect'].lower(),
+        )
+    )
+
+    best_by_standard = {}
+    best_by_caco = {}
+    for candidate in candidates:
+        best_by_standard.setdefault(candidate['standard_effect'], candidate)
+        best_by_caco.setdefault(candidate['caco_effect'], candidate)
+
+    exact_matches = []
+    likely_matches = []
+    review_matches = []
+
+    for candidate in candidates:
+        is_mutual_best = (
+            best_by_standard[candidate['standard_effect']] is candidate and
+            best_by_caco[candidate['caco_effect']] is candidate
+        )
+        if not is_mutual_best:
+            continue
+
+        entry = make_effect_match_entry(candidate)
+        if candidate['similarity'] == 1:
+            exact_matches.append(entry)
+        elif (
+            candidate['shared_count'] >= min_shared and
+            candidate['similarity'] >= min_similarity
+        ):
+            likely_matches.append(entry)
+        elif candidate['shared_count'] >= min_shared:
+            review_matches.append(entry)
+
+    return {
+        'стандартный_файл': path_relative_to_root(data_path),
+        'файл_caco': path_relative_to_root(caco_data_path),
+        'общих_ингредиентов': len(shared_names),
+        'точные_совпадения': exact_matches,
+        'вероятные_совпадения': likely_matches,
+        'нужно_проверить_вручную': review_matches,
+    }
+
+
+def save_caco_effect_matches(data_path: Path, caco_data_path: Path, report_path: Path):
+    report = find_caco_effect_matches(data_path, caco_data_path)
+    save_json(report_path, report)
+    return report
+
+
 def sort_files(data_path: Path, effects_path: Path):
     if sort_module is not None and hasattr(sort_module, 'sort_data_json') and hasattr(sort_module, 'sort_effects_json'):
         try:
@@ -226,7 +364,7 @@ def sort_files(data_path: Path, effects_path: Path):
 
 def print_data_count(data_path: Path):
     data = load_json(data_path)
-    print(f'Total ingredients in {data_path}: {len(data)}')
+    print(f'Всего ингредиентов в {data_path}: {len(data)}')
     return len(data)
 
 
@@ -252,44 +390,53 @@ def interactive_menu():
     datab_json = data_root / 'datab.json'
     pn_json = data_root / 'positive_negative_data.json'
     caco_root = data_root / 'CACO'
+    caco_effect_matches_report = caco_root / 'effect_matches_report.json'
 
     def action_generate_caco_effects():
         if not caco_root.exists():
-            print('CACO folder missing.')
+            print('Папка CACO не найдена.')
             return
         count = generate_caco_effects(caco_root)
-        print(f'Generated {count} effects in data/CACO/effects.json.')
+        print(f'Сгенерировано эффектов в data/CACO/effects.json: {count}')
 
     def action_verify_datab():
         if not datab_json.exists():
-            print(f'Backup or master list missing: {datab_json}')
+            print(f'Файл datab.json не найден: {datab_json}')
             return
         report = verify_datab(datab_json, data_root, report_path)
-        print(f'Verification report written to {report_path}')
-        print(f'Present: {report["present_count"]}, Missing: {report["missing_count"]}')
+        print(f'Отчёт проверки записан в {report_path}')
+        print(f'Найдено: {report["present_count"]}, отсутствует: {report["missing_count"]}')
 
     def action_fix_effect_state():
         changes = fix_effect_state(data_json, pn_json)
         if changes:
-            print(f'Updated effect_state for {len(changes)} ingredients.')
+            print(f'Обновлено значение effect_state у ингредиентов: {len(changes)}')
             for name, old, new in changes:
                 print(f'  {name}: {old} -> {new}')
         else:
-            print('effect_state values are already correct.')
+            print('Значения effect_state уже корректны.')
 
     def action_sync_effects():
         try:
             changes = sync_effects_json(data_json, effects_json)
             if changes:
-                print(f'Synchronized effects.json with data.json and added names for {len(changes)} effects.')
+                print(f'effects.json синхронизирован с data.json; обновлено эффектов: {len(changes)}')
             else:
-                print('effects.json is already synchronized with data.json.')
+                print('effects.json уже синхронизирован с data.json.')
         except Exception as exc:
-            print(f'Failed to synchronize effects.json: {exc}')
+            print(f'Не удалось синхронизировать effects.json: {exc}')
+
+    def action_find_caco_effect_matches():
+        report = save_caco_effect_matches(data_json, caco_root / 'data.json', caco_effect_matches_report)
+        print(f'Отчёт записан в {caco_effect_matches_report.relative_to(ROOT)}')
+        print(f'Общих ингредиентов: {report["общих_ингредиентов"]}')
+        print(f'Точных совпадений: {len(report["точные_совпадения"])}')
+        print(f'Вероятных совпадений: {len(report["вероятные_совпадения"])}')
+        print(f'Требуют ручной проверки: {len(report["нужно_проверить_вручную"])}')
 
     def action_sort_files():
         sort_files(data_json, effects_json)
-        print('Sorted data.json and effects.json.')
+        print('data.json и effects.json отсортированы.')
 
     def action_print_count():
         print_data_count(data_json)
@@ -301,63 +448,65 @@ def interactive_menu():
         run_common_scripts()
 
     menu = [
-        ('Generate data/CACO/effects.json', action_generate_caco_effects),
-        ('Verify data/datab.json coverage', action_verify_datab),
-        ('Fix effect_state in data/data.json', action_fix_effect_state),
-        ('Synchronize data/effects.json with data/data.json', action_sync_effects),
-        ('Sort data.json and effects.json', action_sort_files),
-        ('Print ingredient count', action_print_count),
-        ('List ingredient names', action_list_names),
-        ('Run common root scripts', action_run_common),
-        ('Exit', None),
+        ('Сгенерировать data/CACO/effects.json', action_generate_caco_effects),
+        ('Проверить покрытие data/datab.json', action_verify_datab),
+        ('Исправить effect_state в data/data.json', action_fix_effect_state),
+        ('Синхронизировать data/effects.json с data/data.json', action_sync_effects),
+        ('Сопоставить эффекты data.json и CACO', action_find_caco_effect_matches),
+        ('Отсортировать data.json и effects.json', action_sort_files),
+        ('Показать количество ингредиентов', action_print_count),
+        ('Показать список ингредиентов', action_list_names),
+        ('Запустить общие корневые скрипты', action_run_common),
+        ('Выход', None),
     ]
 
-    print(f'Backup folder: {BACKUP_DIR.relative_to(ROOT)}')
+    print(f'Папка резервных копий: {BACKUP_DIR.relative_to(ROOT)}')
     while True:
-        print('\nAlchemy maintenance menu:')
+        print('\nМеню обслуживания alchemy:')
         for index, (title, _) in enumerate(menu, start=1):
             print(f'  {index}. {title}')
-        choice = input('Choose an action (number): ').strip()
+        choice = input('Выберите действие (номер): ').strip()
         if not choice.isdigit():
-            print('Please enter a number from the menu.')
+            print('Введите номер пункта меню.')
             continue
         choice_idx = int(choice) - 1
         if choice_idx < 0 or choice_idx >= len(menu):
-            print('Invalid choice. Try again.')
+            print('Некорректный выбор. Попробуйте ещё раз.')
             continue
         if menu[choice_idx][1] is None:
-            print('Exiting.')
+            print('Выход.')
             break
         try:
             menu[choice_idx][1]()
         except Exception as exc:
-            print(f'Error executing task: {exc}')
+            print(f'Ошибка выполнения задачи: {exc}')
 
 
 def run_common_scripts():
     for common_name in ['add.py', 'calc.py', 'effect.py', 'name.py', 'sort.py']:
         script_path = ROOT / common_name
         if script_path.exists():
-            print(f'-- Running {common_name} --')
+            print(f'-- Запуск {common_name} --')
             try:
                 run_root_script(script_path)
             except Exception as exc:
-                print(f'Failed to run {common_name}: {exc}')
+                print(f'Не удалось запустить {common_name}: {exc}')
         else:
-            print(f'{common_name} not found.')
+            print(f'{common_name} не найден.')
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Universal repository maintenance script for alchemy.')
-    parser.add_argument('--no-interactive', action='store_true', help='Disable interactive menu and use flags instead.')
-    parser.add_argument('--generate-caco-effects', action='store_true', help='Generate data/CACO/effects.json from data/CACO/data.json.')
-    parser.add_argument('--verify-datab', action='store_true', help='Verify data/datab.json coverage under data/.')
-    parser.add_argument('--fix-effect-state', action='store_true', help='Update effect_state in data/data.json using data/positive_negative_data.json.')
-    parser.add_argument('--sync-effects', action='store_true', help='Synchronize data/effects.json with data/data.json.')
-    parser.add_argument('--sort', action='store_true', help='Sort data.json and effects.json.')
-    parser.add_argument('--count', action='store_true', help='Print ingredient count from data/data.json.')
-    parser.add_argument('--list-names', action='store_true', help='Print ingredient names from data/data.json.')
-    parser.add_argument('--run-common', action='store_true', help='Execute all common root scripts from alchemy/*.py where safe.')
+    parser = argparse.ArgumentParser(description='Универсальный скрипт обслуживания репозитория alchemy.')
+    parser.add_argument('--no-interactive', action='store_true', help='Отключить интерактивное меню и использовать флаги.')
+    parser.add_argument('--generate-caco-effects', action='store_true', help='Сгенерировать data/CACO/effects.json из data/CACO/data.json.')
+    parser.add_argument('--verify-datab', action='store_true', help='Проверить покрытие data/datab.json внутри папки data/.')
+    parser.add_argument('--fix-effect-state', action='store_true', help='Обновить effect_state в data/data.json по data/positive_negative_data.json.')
+    parser.add_argument('--sync-effects', action='store_true', help='Синхронизировать data/effects.json с data/data.json.')
+    parser.add_argument('--caco-effect-matches', action='store_true', help='Сопоставить эффекты стандартного data.json и CACO по общим ингредиентам.')
+    parser.add_argument('--sort', action='store_true', help='Отсортировать data.json и effects.json.')
+    parser.add_argument('--count', action='store_true', help='Показать количество ингредиентов из data/data.json.')
+    parser.add_argument('--list-names', action='store_true', help='Показать имена ингредиентов из data/data.json.')
+    parser.add_argument('--run-common', action='store_true', help='Запустить общие корневые скрипты alchemy/*.py.')
     args = parser.parse_args()
 
     if len(sys.argv) == 1 or not args.no_interactive:
@@ -371,41 +520,50 @@ def main():
     datab_json = data_root / 'datab.json'
     pn_json = data_root / 'positive_negative_data.json'
     caco_root = data_root / 'CACO'
+    caco_effect_matches_report = caco_root / 'effect_matches_report.json'
 
     if args.generate_caco_effects:
         count = generate_caco_effects(caco_root)
-        print(f'Generated data/CACO/effects.json with {count} effects.')
+        print(f'Сгенерирован data/CACO/effects.json. Эффектов: {count}')
 
     if args.verify_datab:
         if not datab_json.exists():
-            print(f'Warning: datab file not found: {datab_json}. Skipping verification.')
+            print(f'Предупреждение: файл datab.json не найден: {datab_json}. Проверка пропущена.')
         else:
             report = verify_datab(datab_json, data_root, report_path)
-            print(f'Verification report written to {report_path}')
-            print(f"Present: {report['present_count']}, Missing: {report['missing_count']}")
+            print(f'Отчёт проверки записан в {report_path}')
+            print(f"Найдено: {report['present_count']}, отсутствует: {report['missing_count']}")
 
     if args.fix_effect_state:
         changes = fix_effect_state(data_json, pn_json)
         if changes:
-            print(f'Updated effect_state for {len(changes)} ingredients.')
+            print(f'Обновлено значение effect_state у ингредиентов: {len(changes)}')
             for name, old, new in changes:
                 print(f'  {name}: {old} -> {new}')
         else:
-            print('effect_state values are already correct.')
+            print('Значения effect_state уже корректны.')
 
     if args.sync_effects:
         try:
             changes = sync_effects_json(data_json, effects_json)
             if changes:
-                print(f'Synchronized effects.json with data.json and added names for {len(changes)} effects.')
+                print(f'effects.json синхронизирован с data.json; обновлено эффектов: {len(changes)}')
             else:
-                print('effects.json is already synchronized with data.json.')
+                print('effects.json уже синхронизирован с data.json.')
         except Exception as exc:
-            print(f'Failed to synchronize effects.json: {exc}')
+            print(f'Не удалось синхронизировать effects.json: {exc}')
+
+    if args.caco_effect_matches:
+        report = save_caco_effect_matches(data_json, caco_root / 'data.json', caco_effect_matches_report)
+        print(f'Отчёт записан в {caco_effect_matches_report.relative_to(ROOT)}')
+        print(f'Общих ингредиентов: {report["общих_ингредиентов"]}')
+        print(f'Точных совпадений: {len(report["точные_совпадения"])}')
+        print(f'Вероятных совпадений: {len(report["вероятные_совпадения"])}')
+        print(f'Требуют ручной проверки: {len(report["нужно_проверить_вручную"])}')
 
     if args.sort:
         sort_files(data_json, effects_json)
-        print('Sorted data.json and effects.json.')
+        print('data.json и effects.json отсортированы.')
 
     if args.count:
         print_data_count(data_json)
