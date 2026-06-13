@@ -1,4 +1,8 @@
 * { box-sizing: border-box; }
+:root {
+    --positive-bg: #a6dfb0;
+    --negative-bg: #f0a0a8;
+}
 body { font-family: Arial, sans-serif; margin: 12px; }
 button, input { font: inherit; }
 button { min-height: 40px; }
@@ -11,6 +15,7 @@ th { background-color: #f2f2f2; cursor: default; }
     font-weight: 700;
 }
 .brew-hint-cell {
+    background: linear-gradient(90deg, var(--negative-bg) 50%, var(--positive-bg) 50%);
     padding: 0;
     cursor: default;
 }
@@ -22,16 +27,16 @@ th { background-color: #f2f2f2; cursor: default; }
     display: flex;
     align-items: center;
     justify-content: center;
-    flex: 1 0 max-content;
+    flex: 0 0 50%;
     min-height: 40px;
     padding: 8px;
     white-space: nowrap;
 }
 .brew-hint-poison {
-    background-color: #f8d7da;
+    background-color: transparent;
 }
 .brew-hint-potion {
-    background-color: #d4edda;
+    background-color: transparent;
 }
 .main-hint-effects {
     text-align: center;
@@ -67,9 +72,9 @@ th { background-color: #f2f2f2; cursor: default; }
     margin-bottom: 8px;
     padding: 8px;
 }
-.positive { background-color: #d4edda; }
-.negative { background-color: #f8d7da; }
-.mixed { background: linear-gradient(90deg, #f8d7da 50%, #d4edda 50%); }
+.positive { background-color: var(--positive-bg); }
+.negative { background-color: var(--negative-bg); }
+.mixed { background: linear-gradient(90deg, var(--negative-bg) 50%, var(--positive-bg) 50%); }
 .addons-list {
     display: flex;
     flex-direction: column;
