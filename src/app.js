@@ -10,6 +10,12 @@ $(document).ready(() => {
     negative: 'negative',
     mixed: 'mixed'
   };
+  const SOURCE_STATUS = {
+    idle: 'idle',
+    loading: 'loading',
+    loaded: 'loaded',
+    error: 'error'
+  };
   const ADDON_DISPLAY_NAMES = new Map(Object.entries({
     '_ResoursePack': 'Листья алоэ',
     'ccBGSSSE001-Fish': 'Рыбалка',
@@ -64,6 +70,10 @@ $(document).ready(() => {
   let addonIngredientCounts = new Map();
   let rootDataEnabled = true;
   let rootIngredientCount = null;
+  let rootPolarityData = null;
+  let rootPolarityStatus = SOURCE_STATUS.idle;
+  let rootPolarityPromise = null;
+  let sourceCache = new Map();
   let dataLoadToken = 0;
 
   const $addonsBtn = $('#addons-btn');
@@ -111,15 +121,6 @@ $(document).ready(() => {
     }
   };
 
-  const fetchOptionalAddonDataSets = async paths => {
-    const responses = await Promise.all(paths.map(async path => ({
-      path,
-      data: await fetchOptionalJson(path)
-    })));
-
-    return responses.filter(response => response.data);
-  };
-
   const uniqueSortedPaths = paths => Array.from(new Set(paths))
     .filter(path => path && path !== ROOT_DATA_PATH)
     .sort(compareRu);
@@ -130,6 +131,7 @@ $(document).ready(() => {
   };
 
   const getDirectoryPathFromDataPath = dataPath => dataPath.replace(/\/data\.json$/i, '');
+  const getEffectPolarityPath = dataPath => dataPath.replace(/data\.json$/i, EFFECT_POLARITY_FILE_NAME);
 
   const createAddonDefinitions = dataPaths => uniqueSortedPaths(dataPaths)
     .map(dataPath => {
@@ -141,6 +143,7 @@ $(document).ready(() => {
       return {
         id: directoryPath,
         dataPath,
+        polarityPath: getEffectPolarityPath(dataPath),
         folderName,
         name: ADDON_DISPLAY_NAMES.get(normalizedFolderName) || folderName,
         defaultEnabled,
@@ -658,35 +661,169 @@ $(document).ready(() => {
     showMessageRow('Не удалось загрузить данные. Проверьте файлы в папке data.');
   };
 
-  const mergeIngredients = dataSets => {
+  const createRootSourceDefinition = () => ({
+    id: ROOT_DATA_PATH,
+    dataPath: ROOT_DATA_PATH,
+    name: 'Стандартный data.json',
+    root: true,
+    required: true
+  });
+
+  const getAddonIsActive = addon => (rootDataEnabled && addon.defaultEnabled) || selectedAddonIds.has(addon.id);
+
+  const getActiveSourceDefinitions = () => {
+    const sources = [];
+
+    if (rootDataEnabled) {
+      sources.push(createRootSourceDefinition());
+    }
+
+    availableAddons.forEach(addon => {
+      if (getAddonIsActive(addon)) {
+        sources.push(addon);
+      }
+    });
+
+    return sources;
+  };
+
+  const getSourceEntry = source => sourceCache.get(source.id);
+  const isSourceLoaded = source => getSourceEntry(source)?.status === SOURCE_STATUS.loaded;
+
+  const getLoadedActiveSourceDefinitions = () => getActiveSourceDefinitions()
+    .filter(isSourceLoaded);
+
+  const getOrCreateSourceEntry = source => {
+    if (!sourceCache.has(source.id)) {
+      sourceCache.set(source.id, {
+        id: source.id,
+        data: [],
+        polarity: null,
+        status: SOURCE_STATUS.idle,
+        error: null,
+        promise: null
+      });
+    }
+
+    return sourceCache.get(source.id);
+  };
+
+  const rememberSourceCount = (source, data) => {
+    const count = Array.isArray(data) ? data.length : 0;
+
+    if (source.root) {
+      rootIngredientCount = count;
+      return;
+    }
+
+    addonIngredientCounts.set(source.id, count);
+  };
+
+  const ensureRootPolarityLoaded = async () => {
+    if (rootPolarityStatus === SOURCE_STATUS.loaded) {
+      return rootPolarityData;
+    }
+
+    if (rootPolarityStatus === SOURCE_STATUS.loading) {
+      return rootPolarityPromise;
+    }
+
+    rootPolarityStatus = SOURCE_STATUS.loading;
+    rootPolarityPromise = fetchJson(ROOT_EFFECT_POLARITY_PATH)
+      .then(data => {
+        rootPolarityData = data;
+        rootPolarityStatus = SOURCE_STATUS.loaded;
+        return data;
+      })
+      .catch(error => {
+        rootPolarityStatus = SOURCE_STATUS.error;
+        rootPolarityPromise = null;
+        throw error;
+      });
+
+    return rootPolarityPromise;
+  };
+
+  const ensureSourceLoaded = async source => {
+    const entry = getOrCreateSourceEntry(source);
+
+    if (entry.status === SOURCE_STATUS.loaded) {
+      return entry;
+    }
+
+    if (entry.status === SOURCE_STATUS.loading) {
+      return entry.promise;
+    }
+
+    entry.status = SOURCE_STATUS.loading;
+    entry.error = null;
+    renderAddons();
+
+    entry.promise = (async () => {
+      try {
+        const [data, polarity] = await Promise.all([
+          source.root ? fetchJson(source.dataPath) : fetchOptionalJson(source.dataPath),
+          source.root ? Promise.resolve(null) : fetchOptionalJson(source.polarityPath)
+        ]);
+
+        if (!Array.isArray(data)) {
+          throw new Error(`Не удалось загрузить ${source.dataPath}`);
+        }
+
+        entry.data = data;
+        entry.polarity = polarity;
+        entry.status = SOURCE_STATUS.loaded;
+        entry.error = null;
+        rememberSourceCount(source, data);
+      } catch (error) {
+        entry.data = [];
+        entry.polarity = null;
+        entry.status = SOURCE_STATUS.error;
+        entry.error = error;
+
+        if (source.required) {
+          throw error;
+        }
+
+        console.warn(`Не удалось загрузить дополнение ${source.dataPath}`, error);
+      } finally {
+        entry.promise = null;
+        renderAddons();
+      }
+
+      return entry;
+    })();
+
+    return entry.promise;
+  };
+
+  const addEffectPolarityData = (dataSet, polarityByEffect) => {
+    if (!dataSet) return;
+
+    (dataSet.positive_effects || []).forEach(effect => {
+      polarityByEffect.set(effect, POLARITY.positive);
+    });
+
+    (dataSet.negative_effects || []).forEach(effect => {
+      polarityByEffect.set(effect, POLARITY.negative);
+    });
+  };
+
+  const rebuildCurrentData = () => {
     const mergedByName = new Map();
+    const polarityByEffect = new Map();
 
-    dataSets.forEach(dataSet => {
-      if (!Array.isArray(dataSet)) return;
+    addEffectPolarityData(rootPolarityData, polarityByEffect);
 
-      dataSet.forEach(ingredient => {
+    getLoadedActiveSourceDefinitions().forEach(source => {
+      const entry = getSourceEntry(source);
+
+      entry.data.forEach(ingredient => {
         if (!ingredient || !ingredient.name || !Array.isArray(ingredient.effects)) return;
         mergedByName.set(ingredient.name, ingredient);
       });
-    });
 
-    return Array.from(mergedByName.values())
-      .sort((a, b) => compareRu(a.name, b.name));
-  };
-
-  const mergeEffectPolarity = dataSets => {
-    const polarityByEffect = new Map();
-
-    dataSets.forEach(dataSet => {
-      if (!dataSet) return;
-
-      (dataSet.positive_effects || []).forEach(effect => {
-        polarityByEffect.set(effect, POLARITY.positive);
-      });
-
-      (dataSet.negative_effects || []).forEach(effect => {
-        polarityByEffect.set(effect, POLARITY.negative);
-      });
+      addEffectPolarityData(entry.polarity, polarityByEffect);
     });
 
     positiveEffects = new Set();
@@ -701,6 +838,15 @@ $(document).ready(() => {
         negativeEffects.add(effect);
       }
     });
+
+    ingredients = Array.from(mergedByName.values())
+      .sort((a, b) => compareRu(a.name, b.name));
+
+    rebuildIndexes();
+    reconcileSelectionWithLoadedData();
+    renderEffectsMenu();
+    renderAddons();
+    renderAllTables();
   };
 
   const reconcileSelectionWithLoadedData = () => {
@@ -718,16 +864,6 @@ $(document).ready(() => {
     if (selectedEffect && !namesByEffect.has(selectedEffect)) {
       selectedEffect = null;
     }
-  };
-
-  const getActiveAddonDataPaths = () => availableAddons
-    .filter(addon => (rootDataEnabled && addon.defaultEnabled) || selectedAddonIds.has(addon.id))
-    .map(addon => addon.dataPath);
-
-  const getEffectPolarityPath = dataPath => dataPath.replace(/data\.json$/i, EFFECT_POLARITY_FILE_NAME);
-
-  const setAddonControlsDisabled = disabled => {
-    $addonsList.find('input[type="checkbox"]').prop('disabled', disabled);
   };
 
   const getRootAddonCountLabel = () => {
@@ -800,46 +936,40 @@ $(document).ready(() => {
 
   const loadActiveData = async () => {
     const currentLoadToken = ++dataLoadToken;
-    const activeAddonDataPaths = getActiveAddonDataPaths();
-    const effectPolarityPaths = [ROOT_EFFECT_POLARITY_PATH, ...activeAddonDataPaths.map(getEffectPolarityPath)];
+    const activeSources = getActiveSourceDefinitions();
+    const hasLoadedActiveSource = activeSources.some(isSourceLoaded);
 
-    showMessageRow('Загрузка данных...');
-    setAddonControlsDisabled(true);
+    rebuildCurrentData();
+
+    if (activeSources.length && !hasLoadedActiveSource) {
+      showMessageRow('Загрузка данных...');
+    }
 
     try {
-      const [rootDataSet, addonDataSets, effectPolaritySets] = await Promise.all([
-        rootDataEnabled ? fetchJson(ROOT_DATA_PATH) : Promise.resolve([]),
-        fetchOptionalAddonDataSets(activeAddonDataPaths),
-        Promise.all(effectPolarityPaths.map((path, index) => (
-          index === 0 ? fetchJson(path) : fetchOptionalJson(path)
-        )))
-      ]);
-
-      if (currentLoadToken !== dataLoadToken) return;
-
-      if (rootDataEnabled && Array.isArray(rootDataSet)) {
-        rootIngredientCount = rootDataSet.length;
+      if (activeSources.length) {
+        await ensureRootPolarityLoaded();
       }
 
-      addonDataSets.forEach(({ path, data }) => {
-        addonIngredientCounts.set(getDirectoryPathFromDataPath(path), Array.isArray(data) ? data.length : 0);
-      });
+      for (const source of activeSources) {
+        if (currentLoadToken !== dataLoadToken) return;
 
-      renderAddons();
-      ingredients = mergeIngredients([rootDataSet, ...addonDataSets.map(({ data }) => data)]);
-      mergeEffectPolarity(effectPolaritySets);
-      rebuildIndexes();
-      reconcileSelectionWithLoadedData();
-      renderEffectsMenu();
-      renderAllTables();
+        const wasLoaded = isSourceLoaded(source);
+        const entry = await ensureSourceLoaded(source);
+
+        if (currentLoadToken !== dataLoadToken) return;
+
+        if (!wasLoaded && entry.status === SOURCE_STATUS.loaded) {
+          rebuildCurrentData();
+        }
+      }
+
+      if (currentLoadToken === dataLoadToken) {
+        rebuildCurrentData();
+      }
     } catch (error) {
       if (currentLoadToken !== dataLoadToken) return;
       console.error('Ошибка загрузки данных:', error);
       showLoadError();
-    } finally {
-      if (currentLoadToken === dataLoadToken) {
-        setAddonControlsDisabled(false);
-      }
     }
   };
 
