@@ -657,7 +657,7 @@ $(document).ready(() => {
       $('<input>')
         .attr({ type: 'checkbox', id: inputId })
         .data('addonId', addon.id)
-        .prop('checked', selectedAddonIds.has(addon.id))
+        .prop('checked', true)
         .appendTo($label);
 
       $('<span>').text(addon.name).appendTo($label);
@@ -709,6 +709,7 @@ $(document).ready(() => {
 
     try {
       availableAddons = createAddonDefinitions(await discoverAddonDataPaths());
+      selectedAddonIds = new Set(availableAddons.filter(addon => addon.selectable).map(addon => addon.id));
       renderAddons();
       await loadActiveData();
     } catch (error) {
