@@ -395,7 +395,11 @@ $(document).ready(() => {
       createCell({ text: 'Нет совпадающих эффектов', className: 'brew-result-effects' }).appendTo($row);
     } else {
       resultEffects.slice(0, 4).forEach(effect => {
-        createCell({ text: effect, className: `brew-result-effects ${getEffectClass(effect)}` }).appendTo($row);
+        const effectClass = getEffectClass(effect);
+        createCell({
+          text: effect,
+          className: `brew-result-effects ${effectClass} ${effectClass ? `hint-${effectClass}` : ''}`
+        }).appendTo($row);
       });
     }
 

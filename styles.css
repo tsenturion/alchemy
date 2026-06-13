@@ -45,13 +45,22 @@ th { background-color: #f2f2f2; cursor: default; }
     cursor: default;
 }
 .brew-result-label {
-    background: #fff;
+    background: linear-gradient(90deg, var(--hint-negative-bg) 50%, var(--hint-positive-bg) 50%);
     font-weight: 700;
     cursor: default;
 }
 .brew-result-effects {
     background: #fff;
     cursor: default;
+}
+.hint-positive {
+    background-color: var(--hint-positive-bg);
+}
+.hint-negative {
+    background-color: var(--hint-negative-bg);
+}
+.hint-mixed {
+    background: linear-gradient(90deg, var(--hint-negative-bg) 50%, var(--hint-positive-bg) 50%);
 }
 .menu {
     display: none;
