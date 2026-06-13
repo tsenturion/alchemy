@@ -61,6 +61,7 @@ $(document).ready(() => {
   let selectedPolarity = null;
   let availableAddons = [];
   let selectedAddonIds = new Set();
+  let addonIngredientCounts = new Map();
   let dataLoadToken = 0;
 
   const $addonsBtn = $('#addons-btn');
@@ -103,9 +104,13 @@ $(document).ready(() => {
     }
   };
 
-  const fetchOptionalJsonSet = async paths => {
-    const responses = await Promise.all(paths.map(fetchOptionalJson));
-    return responses.filter(Boolean);
+  const fetchOptionalAddonDataSets = async paths => {
+    const responses = await Promise.all(paths.map(async path => ({
+      path,
+      data: await fetchOptionalJson(path)
+    })));
+
+    return responses.filter(response => response.data);
   };
 
   const uniqueSortedPaths = paths => Array.from(new Set(paths))
@@ -661,10 +666,13 @@ $(document).ready(() => {
       $('<input>')
         .attr({ type: 'checkbox', id: inputId })
         .data('addonId', addon.id)
-        .prop('checked', true)
+        .prop('checked', selectedAddonIds.has(addon.id))
         .appendTo($label);
 
-      $('<span>').text(addon.name).appendTo($label);
+      const count = addonIngredientCounts.get(addon.id);
+      const labelText = Number.isInteger(count) ? `${addon.name}, ${count}` : addon.name;
+
+      $('<span>').text(labelText).appendTo($label);
       $label.appendTo(fragment);
     });
 
@@ -683,7 +691,7 @@ $(document).ready(() => {
     try {
       const [rootDataSet, addonDataSets, effectPolaritySets] = await Promise.all([
         fetchJson(ROOT_DATA_PATH),
-        fetchOptionalJsonSet(activeAddonDataPaths),
+        fetchOptionalAddonDataSets(activeAddonDataPaths),
         Promise.all(effectPolarityPaths.map((path, index) => (
           index === 0 ? fetchJson(path) : fetchOptionalJson(path)
         )))
@@ -691,7 +699,12 @@ $(document).ready(() => {
 
       if (currentLoadToken !== dataLoadToken) return;
 
-      ingredients = mergeIngredients([rootDataSet, ...addonDataSets]);
+      addonDataSets.forEach(({ path, data }) => {
+        addonIngredientCounts.set(getDirectoryPathFromDataPath(path), Array.isArray(data) ? data.length : 0);
+      });
+
+      renderAddons();
+      ingredients = mergeIngredients([rootDataSet, ...addonDataSets.map(({ data }) => data)]);
       mergeEffectPolarity(effectPolaritySets);
       rebuildIndexes();
       reconcileSelectionWithLoadedData();
