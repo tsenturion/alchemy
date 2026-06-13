@@ -556,9 +556,13 @@ $(document).ready(() => {
       createIngredientRow(ingredient).appendTo(fragment);
     });
 
+    const excludedMatchMessage = selectedPolarity === POLARITY.positive
+      ? 'Исключены отрицательные совпадения.'
+      : 'Исключены положительные совпадения.';
+
     $combinationTableBody.empty().append(fragment);
     $combinationTitle
-      .text(`Сочетается с ${selectedIngredients.map(ingredient => ingredient.name).join(', ')}`)
+      .text(`Сочетается с ${selectedIngredients.map(ingredient => ingredient.name).join(' / ')}. ${excludedMatchMessage}`)
       .toggle(finalCombinationNames.length > 0);
     $combinationTable.toggle(finalCombinationNames.length > 0);
   };
