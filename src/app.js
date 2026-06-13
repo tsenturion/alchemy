@@ -78,6 +78,10 @@ $(document).ready(() => {
   const $backBtn = $('#back-btn');
   const $selectionTable = $('#selection-table');
   const $combinationTable = $('#combination-table');
+  const $selectionTitle = $('#selection-title');
+  const $combinationTitle = $('#combination-title');
+  const $effectTitle = $('#effect-title');
+  const $mainHintRow = $('#main-hint-row');
   const $removeAllBtn = $('#remove-all-btn');
 
   const normalizeSearch = value => value.trim().toLowerCase();
@@ -375,6 +379,8 @@ $(document).ready(() => {
 
   const updateFilterControls = () => {
     $backBtn.toggle(Boolean(selectedEffect));
+    $effectTitle.text(selectedEffect || '').toggle(Boolean(selectedEffect));
+    $mainHintRow.toggle(!selectedEffect);
   };
 
   const renderEffectsMenu = () => {
@@ -435,6 +441,7 @@ $(document).ready(() => {
 
     $selectionTableBody.empty().append(fragment);
     $selectionTable.toggle(selectedNames.size > 0);
+    $selectionTitle.toggle(selectedNames.size > 0);
   };
 
   const renderCombinationTable = () => {
@@ -445,6 +452,7 @@ $(document).ready(() => {
     if (!selectedIngredients.length || !selectedPolarity) {
       $combinationTableBody.empty();
       $combinationTable.hide();
+      $combinationTitle.hide().text('');
       return;
     }
 
@@ -492,6 +500,9 @@ $(document).ready(() => {
     });
 
     $combinationTableBody.empty().append(fragment);
+    $combinationTitle
+      .text(`Сочетается с ${selectedIngredients.map(ingredient => ingredient.name).join(', ')}`)
+      .toggle(finalCombinationNames.length > 0);
     $combinationTable.toggle(finalCombinationNames.length > 0);
   };
 

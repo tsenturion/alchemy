@@ -26,7 +26,7 @@
         </div>
     </div>
 
-    <!-- Таблица выбора -->
+    <div class="table-title" id="selection-title" style="display: none;">Вы выбрали</div>
     <table id="selection-table" style="display: none;">
         <thead>
             <tr>
@@ -39,6 +39,7 @@
         </thead>
         <tbody></tbody>
     </table>
+    <div class="table-title" id="combination-title" style="display: none;"></div>
     <table id="combination-table" style="display: none;">
         <thead>
             <tr>
@@ -51,6 +52,7 @@
         </thead>
         <tbody></tbody>
     </table>
+    <div class="table-title" id="effect-title" style="display: none;"></div>
     <table id="data-table">
         <thead>
             <tr>
@@ -59,6 +61,13 @@
                 <th>Эффект 2</th>
                 <th>Эффект 3</th>
                 <th>Эффект 4</th>
+            </tr>
+            <tr id="main-hint-row">
+                <th class="brew-hint-cell">
+                    <span class="brew-hint-poison">Для варки яда</span>
+                    <span class="brew-hint-potion">Для варки зелья</span>
+                </th>
+                <th class="main-hint-effects" colspan="4">Выберите эффект чтобы посмотреть все ингридиенты</th>
             </tr>
         </thead>
         <tbody></tbody>
