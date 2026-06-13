@@ -353,6 +353,50 @@ $(document).ready(() => {
     return $row;
   };
 
+  const getBrewResultEffects = selectedIngredients => {
+    const effectCounts = new Map();
+
+    selectedIngredients.forEach(ingredient => {
+      new Set(ingredient.effects).forEach(effect => {
+        effectCounts.set(effect, (effectCounts.get(effect) || 0) + 1);
+      });
+    });
+
+    return Array.from(effectCounts.entries())
+      .filter(([, count]) => count >= 2)
+      .map(([effect]) => effect)
+      .sort(compareRu);
+  };
+
+  const createBrewResultRow = selectedIngredients => {
+    const resultEffects = getBrewResultEffects(selectedIngredients);
+    const $row = $('<tr>').addClass('brew-result-row');
+    const $effectsCell = $('<td>')
+      .attr('colspan', 4)
+      .addClass('brew-result-effects');
+
+    $('<td>')
+      .addClass('brew-result-label')
+      .text('У вас получится:')
+      .appendTo($row);
+
+    if (selectedIngredients.length < 2) {
+      $effectsCell.text('Выберите еще ингредиент');
+    } else if (!resultEffects.length) {
+      $effectsCell.text('Нет совпадающих эффектов');
+    } else {
+      resultEffects.forEach(effect => {
+        $('<span>')
+          .addClass(`brew-result-effect ${getEffectClass(effect)}`)
+          .text(effect)
+          .appendTo($effectsCell);
+      });
+    }
+
+    $effectsCell.appendTo($row);
+    return $row;
+  };
+
   const rebuildIndexes = () => {
     ingredientByName = new Map();
     namesByEffect = new Map();
@@ -417,22 +461,26 @@ $(document).ready(() => {
 
   const renderSelectionTable = () => {
     const fragment = document.createDocumentFragment();
+    const selectedIngredients = Array.from(selectedNames)
+      .map(name => ingredientByName.get(name))
+      .filter(Boolean);
 
-    selectedNames.forEach(name => {
-      const ingredient = ingredientByName.get(name);
-      if (!ingredient) return;
+    if (selectedIngredients.length) {
+      createBrewResultRow(selectedIngredients).appendTo(fragment);
+    }
 
+    selectedIngredients.forEach(ingredient => {
       const $row = createIngredientRow(ingredient, {
-        firstCellClass: selectedClasses.get(name) || getIngredientClass(ingredient)
+        firstCellClass: selectedClasses.get(ingredient.name) || getIngredientClass(ingredient)
       });
       const $nameCell = $row.find('td:first-child');
 
       $nameCell.empty().append(
-        $('<span>').text(name),
+        $('<span>').text(ingredient.name),
         $('<button>')
           .attr('type', 'button')
           .addClass('remove-btn')
-          .data('name', name)
+          .data('name', ingredient.name)
           .text('Удалить')
       );
 
@@ -440,8 +488,8 @@ $(document).ready(() => {
     });
 
     $selectionTableBody.empty().append(fragment);
-    $selectionTable.toggle(selectedNames.size > 0);
-    $selectionTitle.toggle(selectedNames.size > 0);
+    $selectionTable.toggle(selectedIngredients.length > 0);
+    $selectionTitle.toggle(selectedIngredients.length > 0);
   };
 
   const renderCombinationTable = () => {
