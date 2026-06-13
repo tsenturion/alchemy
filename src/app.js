@@ -62,6 +62,8 @@ $(document).ready(() => {
   let availableAddons = [];
   let selectedAddonIds = new Set();
   let addonIngredientCounts = new Map();
+  let rootDataEnabled = true;
+  let rootIngredientCount = null;
   let dataLoadToken = 0;
 
   const $addonsBtn = $('#addons-btn');
@@ -639,7 +641,7 @@ $(document).ready(() => {
   };
 
   const getActiveAddonDataPaths = () => availableAddons
-    .filter(addon => addon.defaultEnabled || selectedAddonIds.has(addon.id))
+    .filter(addon => (rootDataEnabled && addon.defaultEnabled) || selectedAddonIds.has(addon.id))
     .map(addon => addon.dataPath);
 
   const getEffectPolarityPath = dataPath => dataPath.replace(/data\.json$/i, EFFECT_POLARITY_FILE_NAME);
@@ -650,14 +652,24 @@ $(document).ready(() => {
 
   const renderAddons = () => {
     const selectableAddons = availableAddons.filter(addon => addon.selectable);
-
-    if (!selectableAddons.length) {
-      $addonsBtn.hide();
-      $addonsMenu.hide();
-      return;
-    }
-
     const fragment = document.createDocumentFragment();
+
+    const $rootLabel = $('<label>')
+      .addClass('addon-option')
+      .attr('for', 'addon-root-data')
+      .attr('title', ROOT_DATA_PATH);
+    const rootLabelText = Number.isInteger(rootIngredientCount)
+      ? `Стандартный data.json, ${rootIngredientCount}`
+      : 'Стандартный data.json';
+
+    $('<input>')
+      .attr({ type: 'checkbox', id: 'addon-root-data' })
+      .data('baseData', true)
+      .prop('checked', rootDataEnabled)
+      .appendTo($rootLabel);
+
+    $('<span>').text(rootLabelText).appendTo($rootLabel);
+    $rootLabel.appendTo(fragment);
 
     selectableAddons.forEach((addon, index) => {
       const inputId = `addon-${index}`;
@@ -693,7 +705,7 @@ $(document).ready(() => {
 
     try {
       const [rootDataSet, addonDataSets, effectPolaritySets] = await Promise.all([
-        fetchJson(ROOT_DATA_PATH),
+        rootDataEnabled ? fetchJson(ROOT_DATA_PATH) : Promise.resolve([]),
         fetchOptionalAddonDataSets(activeAddonDataPaths),
         Promise.all(effectPolarityPaths.map((path, index) => (
           index === 0 ? fetchJson(path) : fetchOptionalJson(path)
@@ -701,6 +713,10 @@ $(document).ready(() => {
       ]);
 
       if (currentLoadToken !== dataLoadToken) return;
+
+      if (rootDataEnabled && Array.isArray(rootDataSet)) {
+        rootIngredientCount = rootDataSet.length;
+      }
 
       addonDataSets.forEach(({ path, data }) => {
         addonIngredientCounts.set(getDirectoryPathFromDataPath(path), Array.isArray(data) ? data.length : 0);
@@ -785,6 +801,12 @@ $(document).ready(() => {
   });
 
   $addonsList.on('change', 'input[type="checkbox"]', function () {
+    if ($(this).data('baseData')) {
+      rootDataEnabled = this.checked;
+      loadActiveData();
+      return;
+    }
+
     const addonId = $(this).data('addonId');
 
     if (this.checked) {
