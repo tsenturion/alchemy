@@ -368,6 +368,15 @@ $(document).ready(() => {
       .sort(compareRu);
   };
 
+  const moveMatchedEffectsLeft = (effects, matchedEffects) => {
+    if (!matchedEffects.size) return effects;
+
+    return [
+      ...effects.filter(effect => matchedEffects.has(effect)),
+      ...effects.filter(effect => !matchedEffects.has(effect))
+    ];
+  };
+
   const createBrewResultRow = selectedIngredients => {
     const resultEffects = getBrewResultEffects(selectedIngredients);
     const $row = $('<tr>').addClass('brew-result-row');
@@ -470,6 +479,7 @@ $(document).ready(() => {
     const selectedIngredients = Array.from(selectedNames)
       .map(name => ingredientByName.get(name))
       .filter(Boolean);
+    const matchedEffects = new Set(getBrewResultEffects(selectedIngredients));
 
     if (selectedIngredients.length) {
       createBrewResultRow(selectedIngredients).appendTo(fragment);
@@ -477,7 +487,8 @@ $(document).ready(() => {
 
     selectedIngredients.forEach(ingredient => {
       const $row = createIngredientRow(ingredient, {
-        firstCellClass: selectedClasses.get(ingredient.name) || getIngredientClass(ingredient)
+        firstCellClass: selectedClasses.get(ingredient.name) || getIngredientClass(ingredient),
+        effects: moveMatchedEffectsLeft(ingredient.effects, matchedEffects)
       });
       const $nameCell = $row.find('td:first-child');
 
