@@ -431,6 +431,15 @@ $(document).ready(() => {
     const effects = Array.from(namesByEffect.keys()).sort(compareRu);
     const fragment = document.createDocumentFragment();
 
+    $('<input>')
+      .attr({
+        type: 'text',
+        placeholder: 'Поиск по названию...',
+        autocomplete: 'off'
+      })
+      .addClass('effect-search')
+      .appendTo(fragment);
+
     effects.forEach(effect => {
       $('<button>')
         .attr('type', 'button')
@@ -924,6 +933,14 @@ $(document).ready(() => {
   $effectsMenu.on('click', '.effect-btn', function () {
     setSelectedEffect($(this).text());
     closeMenus();
+  });
+
+  $effectsMenu.on('input', '.effect-search', function () {
+    const query = normalizeSearch($(this).val());
+
+    $effectsMenu.find('.effect-btn').each(function () {
+      $(this).toggle(normalizeSearch($(this).text()).includes(query));
+    });
   });
 
   $dataTableBody.on('click', '.effect-cell', function () {

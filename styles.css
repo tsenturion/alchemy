@@ -60,6 +60,13 @@ th { background-color: #f2f2f2; }
     z-index: 1000;
 }
 .menu button { display: block; width: 100%; margin: 5px 0; }
+.effect-search {
+    display: block;
+    width: 100%;
+    min-height: 40px;
+    margin-bottom: 8px;
+    padding: 8px;
+}
 .positive { background-color: #d4edda; }
 .negative { background-color: #f8d7da; }
 .mixed { background: linear-gradient(90deg, #f8d7da 50%, #d4edda 50%); }
