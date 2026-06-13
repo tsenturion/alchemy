@@ -46,12 +46,6 @@ th { background-color: #f2f2f2; cursor: default; }
     background: #fff;
     cursor: default;
 }
-.brew-result-effect {
-    display: inline-block;
-    margin: 2px 6px 2px 0;
-    padding: 5px 8px;
-    border: 1px solid #999;
-}
 .menu {
     display: none;
     position: absolute;

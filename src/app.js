@@ -371,9 +371,6 @@ $(document).ready(() => {
   const createBrewResultRow = selectedIngredients => {
     const resultEffects = getBrewResultEffects(selectedIngredients);
     const $row = $('<tr>').addClass('brew-result-row');
-    const $effectsCell = $('<td>')
-      .attr('colspan', 4)
-      .addClass('brew-result-effects');
 
     $('<td>')
       .addClass('brew-result-label')
@@ -381,19 +378,19 @@ $(document).ready(() => {
       .appendTo($row);
 
     if (selectedIngredients.length < 2) {
-      $effectsCell.text('Выберите еще ингредиент');
+      createCell({ text: 'Выберите еще ингредиент', className: 'brew-result-effects' }).appendTo($row);
     } else if (!resultEffects.length) {
-      $effectsCell.text('Нет совпадающих эффектов');
+      createCell({ text: 'Нет совпадающих эффектов', className: 'brew-result-effects' }).appendTo($row);
     } else {
-      resultEffects.forEach(effect => {
-        $('<span>')
-          .addClass(`brew-result-effect ${getEffectClass(effect)}`)
-          .text(effect)
-          .appendTo($effectsCell);
+      resultEffects.slice(0, 4).forEach(effect => {
+        createCell({ text: effect, className: `brew-result-effects ${getEffectClass(effect)}` }).appendTo($row);
       });
     }
 
-    $effectsCell.appendTo($row);
+    while ($row.children('td').length < 5) {
+      createCell({ text: '', className: 'brew-result-effects' }).appendTo($row);
+    }
+
     return $row;
   };
 
