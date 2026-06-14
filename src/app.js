@@ -555,12 +555,14 @@ $(document).ready(() => {
       const $nameCell = $row.find('td:first-child');
 
       $nameCell.empty().append(
-        $('<span>').text(ingredient.name),
-        $('<button>')
-          .attr('type', 'button')
-          .addClass('remove-btn')
-          .data('name', ingredient.name)
-          .text('Удалить')
+        $('<div>').addClass('selected-name-content').append(
+          $('<span>').text(ingredient.name),
+          $('<button>')
+            .attr('type', 'button')
+            .addClass('remove-btn')
+            .data('name', ingredient.name)
+            .text('Удалить')
+        )
       );
 
       $row.appendTo(fragment);
