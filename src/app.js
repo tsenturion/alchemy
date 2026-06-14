@@ -298,6 +298,12 @@ $(document).ready(() => {
     return '';
   };
 
+  const getEffectMenuPriority = effect => {
+    if (positiveEffects.has(effect)) return 0;
+    if (negativeEffects.has(effect)) return 1;
+    return 2;
+  };
+
   const getIngredientClass = ingredient => {
     const hasPositive = ingredient.effects.some(effect => positiveEffects.has(effect));
     const hasNegative = ingredient.effects.some(effect => negativeEffects.has(effect));
@@ -466,7 +472,8 @@ $(document).ready(() => {
   };
 
   const renderEffectsMenu = () => {
-    const effects = Array.from(namesByEffect.keys()).sort(compareRu);
+    const effects = Array.from(namesByEffect.keys())
+      .sort((a, b) => getEffectMenuPriority(a) - getEffectMenuPriority(b) || compareRu(a, b));
     const fragment = document.createDocumentFragment();
 
     $('<input>')
@@ -482,6 +489,7 @@ $(document).ready(() => {
       $('<button>')
         .attr('type', 'button')
         .addClass('effect-btn')
+        .addClass(getEffectClass(effect))
         .text(effect)
         .appendTo(fragment);
     });
