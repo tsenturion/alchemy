@@ -2,8 +2,10 @@ $(document).ready(() => {
   const MAX_SELECTION_COUNT = 3;
   const DATA_ROOT = 'data';
   const DATA_FILE_NAME = 'data.json';
+  const EFFECTS_FILE_NAME = 'effects.json';
   const EFFECT_POLARITY_FILE_NAME = 'positive_negative_data.json';
   const ROOT_DATA_PATH = `${DATA_ROOT}/${DATA_FILE_NAME}`;
+  const ROOT_EFFECTS_PATH = `${DATA_ROOT}/${EFFECTS_FILE_NAME}`;
   const ROOT_EFFECT_POLARITY_PATH = `${DATA_ROOT}/${EFFECT_POLARITY_FILE_NAME}`;
   const POLARITY = {
     positive: 'positive',
@@ -131,6 +133,7 @@ $(document).ready(() => {
   };
 
   const getDirectoryPathFromDataPath = dataPath => dataPath.replace(/\/data\.json$/i, '');
+  const getEffectsPath = dataPath => dataPath.replace(/data\.json$/i, EFFECTS_FILE_NAME);
   const getEffectPolarityPath = dataPath => dataPath.replace(/data\.json$/i, EFFECT_POLARITY_FILE_NAME);
 
   const createAddonDefinitions = dataPaths => uniqueSortedPaths(dataPaths)
@@ -143,6 +146,7 @@ $(document).ready(() => {
       return {
         id: directoryPath,
         dataPath,
+        effectsPath: getEffectsPath(dataPath),
         polarityPath: getEffectPolarityPath(dataPath),
         folderName,
         name: ADDON_DISPLAY_NAMES.get(normalizedFolderName) || folderName,
@@ -304,7 +308,20 @@ $(document).ready(() => {
     return 2;
   };
 
+  const getIngredientClassFromState = ingredient => {
+    if (!Object.prototype.hasOwnProperty.call(ingredient, 'effect_state')) return null;
+
+    const state = Number(ingredient.effect_state);
+    if (state === 1) return POLARITY.positive;
+    if (state === -1) return POLARITY.negative;
+    if (state === 0) return POLARITY.mixed;
+    return null;
+  };
+
   const getIngredientClass = ingredient => {
+    const stateClass = getIngredientClassFromState(ingredient);
+    if (stateClass) return stateClass;
+
     const hasPositive = ingredient.effects.some(effect => positiveEffects.has(effect));
     const hasNegative = ingredient.effects.some(effect => negativeEffects.has(effect));
 
@@ -703,6 +720,7 @@ $(document).ready(() => {
   const createRootSourceDefinition = () => ({
     id: ROOT_DATA_PATH,
     dataPath: ROOT_DATA_PATH,
+    effectsPath: ROOT_EFFECTS_PATH,
     name: 'Стандартный data.json',
     root: true,
     required: true
@@ -737,6 +755,7 @@ $(document).ready(() => {
       sourceCache.set(source.id, {
         id: source.id,
         data: [],
+        effects: null,
         polarity: null,
         status: SOURCE_STATUS.idle,
         error: null,
@@ -756,6 +775,55 @@ $(document).ready(() => {
     }
 
     addonIngredientCounts.set(source.id, count);
+  };
+
+  const getUniqueEffects = effects => Array.from(new Set(
+    effects.filter(effect => typeof effect === 'string' && effect)
+  ));
+
+  const buildEffectsByIngredientName = effectsData => {
+    const effectsByName = new Map();
+
+    if (!Array.isArray(effectsData)) {
+      return effectsByName;
+    }
+
+    effectsData.forEach(entry => {
+      if (!entry || typeof entry.effect !== 'string' || !Array.isArray(entry.names)) return;
+
+      entry.names.forEach(name => {
+        if (typeof name !== 'string' || !name) return;
+
+        if (!effectsByName.has(name)) {
+          effectsByName.set(name, []);
+        }
+
+        effectsByName.get(name).push(entry.effect);
+      });
+    });
+
+    effectsByName.forEach((effects, name) => {
+      effectsByName.set(name, getUniqueEffects(effects));
+    });
+
+    return effectsByName;
+  };
+
+  const normalizeSourceData = (data, effectsData) => {
+    const effectsByName = buildEffectsByIngredientName(effectsData);
+
+    return data
+      .filter(ingredient => ingredient && typeof ingredient.name === 'string' && ingredient.name)
+      .map(ingredient => {
+        const ingredientEffects = Array.isArray(ingredient.effects)
+          ? getUniqueEffects(ingredient.effects)
+          : [];
+        const effects = ingredientEffects.length
+          ? ingredientEffects
+          : effectsByName.get(ingredient.name) || [];
+
+        return { ...ingredient, effects };
+      });
   };
 
   const ensureRootPolarityLoaded = async () => {
@@ -800,8 +868,9 @@ $(document).ready(() => {
 
     entry.promise = (async () => {
       try {
-        const [data, polarity] = await Promise.all([
+        const [data, effects, polarity] = await Promise.all([
           source.root ? fetchJson(source.dataPath) : fetchOptionalJson(source.dataPath),
+          fetchOptionalJson(source.effectsPath),
           source.root ? Promise.resolve(null) : fetchOptionalJson(source.polarityPath)
         ]);
 
@@ -809,13 +878,15 @@ $(document).ready(() => {
           throw new Error(`Не удалось загрузить ${source.dataPath}`);
         }
 
-        entry.data = data;
+        entry.data = normalizeSourceData(data, effects);
+        entry.effects = Array.isArray(effects) ? effects : null;
         entry.polarity = polarity;
         entry.status = SOURCE_STATUS.loaded;
         entry.error = null;
-        rememberSourceCount(source, data);
+        rememberSourceCount(source, entry.data);
       } catch (error) {
         entry.data = [];
+        entry.effects = null;
         entry.polarity = null;
         entry.status = SOURCE_STATUS.error;
         entry.error = error;
