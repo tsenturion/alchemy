@@ -5,7 +5,7 @@
 - Выполняет обслуживание data.json/effects.json/positive_negative_data.json одним действием
 - Проверяет наличие всех имен из data/datab.json в JSON-файлах под data/
 - Сопоставляет похожие эффекты стандартного data.json и CACO
-- Показывает количество ингредиентов и список имён
+- Показывает список имён
 """
 
 import json
@@ -430,12 +430,6 @@ def print_maintenance_report(result):
             print(f'  {item["data_path"].relative_to(ROOT)}: {", ".join(changed_parts)}')
 
 
-def print_data_count(data_path: Path):
-    data = load_json(data_path)
-    print(f'Всего ингредиентов в {data_path}: {len(data)}')
-    return len(data)
-
-
 def print_ingredient_names(data_path: Path):
     data = load_json(data_path)
     for index, item in enumerate(data, start=1):
@@ -471,9 +465,6 @@ def interactive_menu():
         print(f'Вероятных совпадений: {len(report["вероятные_совпадения"])}')
         print(f'Требуют ручной проверки: {len(report["нужно_проверить_вручную"])}')
 
-    def action_print_count():
-        print_data_count(data_json)
-
     def action_list_names():
         print_ingredient_names(data_json)
 
@@ -481,7 +472,6 @@ def interactive_menu():
         ('Выполнить универсальное обслуживание данных', action_maintain_data),
         ('Проверить покрытие data/datab.json', action_verify_datab),
         ('Сопоставить эффекты data.json и CACO', action_find_caco_effect_matches),
-        ('Показать количество ингредиентов', action_print_count),
         ('Показать список ингредиентов', action_list_names),
         ('Выход', None),
     ]
