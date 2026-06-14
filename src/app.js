@@ -577,7 +577,7 @@ $(document).ready(() => {
 
     $combinationTableBody.empty().append(fragment);
     $combinationTitle
-      .text(`Сочетается с ${selectedIngredients.map(ingredient => ingredient.name).join(' / ')}. ${excludedMatchMessage}, ${finalCombinationNames.length}`)
+      .text(`Сочетается с ${selectedIngredients.map(ingredient => ingredient.name).join(' / ')}, ${finalCombinationNames.length}. ${excludedMatchMessage}`)
       .toggle(finalCombinationNames.length > 0);
     $combinationTable.toggle(finalCombinationNames.length > 0);
   };
