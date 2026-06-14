@@ -92,14 +92,14 @@ def update_effects_json(data_path: Path, effects_path: Path):
     return {'changed': changed, 'effects_count': len(effects)}
 
 
-def update_missing_effect_state(data_path: Path, pn_path: Path):
+def update_effect_state(data_path: Path, pn_path: Path):
     data = load_json(data_path)
     pn = load_json(pn_path)
     positive = set(pn.get('positive_effects', []))
     negative = set(pn.get('negative_effects', []))
 
     added = []
-    mismatches = []
+    updated = []
 
     for item in data:
         if not isinstance(item, dict):
@@ -110,14 +110,16 @@ def update_missing_effect_state(data_path: Path, pn_path: Path):
             item['effect_state'] = expected_state
             added.append((item.get('name'), expected_state))
         elif item.get('effect_state') != expected_state:
-            mismatches.append((item.get('name'), item.get('effect_state'), expected_state))
+            old_state = item.get('effect_state')
+            item['effect_state'] = expected_state
+            updated.append((item.get('name'), old_state, expected_state))
 
-    if added:
+    if added or updated:
         save_json(data_path, data)
 
     return {
         'added': added,
-        'mismatches': mismatches,
+        'updated': updated,
         'skipped': False,
     }
 
@@ -376,9 +378,9 @@ def maintain_data(data_root: Path):
 
         data_sort_result = sort_data_file(data_path)
         state_result = (
-            update_missing_effect_state(data_path, pn_path)
+            update_effect_state(data_path, pn_path)
             if pn_path is not None
-            else {'added': [], 'mismatches': [], 'skipped': True}
+            else {'added': [], 'updated': [], 'skipped': True}
         )
         effects_result = update_effects_json(data_path, effects_path)
 
@@ -388,7 +390,7 @@ def maintain_data(data_root: Path):
             'positive_negative_path': pn_path,
             'data_sorted': data_sort_result['changed'],
             'effect_state_added': state_result['added'],
-            'effect_state_mismatches': state_result['mismatches'],
+            'effect_state_updated': state_result['updated'],
             'effect_state_skipped': state_result['skipped'],
             'effects_changed': effects_result['changed'],
             'effects_count': effects_result['effects_count'],
@@ -408,12 +410,12 @@ def print_maintenance_report(result):
     sorted_data_count = sum(1 for item in result['data_results'] if item['data_sorted'])
     changed_effects_count = sum(1 for item in result['data_results'] if item['effects_changed'])
     added_state_count = sum(len(item['effect_state_added']) for item in result['data_results'])
-    mismatch_count = sum(len(item['effect_state_mismatches']) for item in result['data_results'])
+    updated_state_count = sum(len(item['effect_state_updated']) for item in result['data_results'])
 
     print(f'Отсортировано data.json: {sorted_data_count}')
     print(f'Создано или обновлено effects.json: {changed_effects_count}')
     print(f'Добавлено отсутствующих effect_state: {added_state_count}')
-    print(f'Найдено несовпадающих effect_state: {mismatch_count}')
+    print(f'Обновлено несовпадающих effect_state: {updated_state_count}')
 
     for item in result['data_results']:
         changed_parts = []
@@ -423,8 +425,8 @@ def print_maintenance_report(result):
             changed_parts.append('effects.json')
         if item['effect_state_added']:
             changed_parts.append(f'effect_state +{len(item["effect_state_added"])}')
-        if item['effect_state_mismatches']:
-            changed_parts.append(f'проверить effect_state {len(item["effect_state_mismatches"])}')
+        if item['effect_state_updated']:
+            changed_parts.append(f'effect_state обновлено {len(item["effect_state_updated"])}')
 
         if changed_parts:
             print(f'  {item["data_path"].relative_to(ROOT)}: {", ".join(changed_parts)}')
