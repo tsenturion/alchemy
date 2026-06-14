@@ -10,7 +10,6 @@ $(document).ready(() => {
   const APP_ZOOM_STORAGE_KEY = 'alchemy-app-zoom';
   const APP_ZOOM_MIN = 0.5;
   const APP_ZOOM_MAX = 1.25;
-  const APP_ZOOM_STEP = 0.1;
   const POLARITY = {
     positive: 'positive',
     negative: 'negative',
@@ -106,9 +105,6 @@ $(document).ready(() => {
   const $effectBackBtn = $('#effect-back-btn');
   const $mainHintRow = $('#main-hint-row');
   const $removeAllBtn = $('#remove-all-btn');
-  const $zoomOutBtn = $('#zoom-out-btn');
-  const $zoomInBtn = $('#zoom-in-btn');
-  const $zoomValue = $('#zoom-value');
 
   const normalizeSearch = value => value.trim().toLowerCase();
   const normalizeAddonKey = value => value.toLowerCase();
@@ -139,9 +135,6 @@ $(document).ready(() => {
 
   const applyAppZoom = () => {
     $appRoot.css('--app-zoom', appZoom);
-    $zoomValue.text(`${Math.round(appZoom * 100)}%`);
-    $zoomOutBtn.prop('disabled', appZoom <= APP_ZOOM_MIN);
-    $zoomInBtn.prop('disabled', appZoom >= APP_ZOOM_MAX);
   };
 
   const setAppZoom = (value, options = {}) => {
@@ -1214,14 +1207,6 @@ $(document).ready(() => {
   $addonsBtn.on('click', event => {
     event.stopPropagation();
     toggleMenu($addonsBtn, $addonsMenu);
-  });
-
-  $zoomOutBtn.on('click', () => {
-    setAppZoom(appZoom - APP_ZOOM_STEP);
-  });
-
-  $zoomInBtn.on('click', () => {
-    setAppZoom(appZoom + APP_ZOOM_STEP);
   });
 
   $('.menu').on('click', event => {
