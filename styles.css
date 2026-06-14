@@ -271,9 +271,25 @@ th { background-color: #f2f2f2; cursor: default; }
     .table-title {
         padding: 0 6px;
     }
+    .selected-name-content,
+    .selected-header-content {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 3px;
+        justify-content: flex-start;
+    }
+    .selected-name-content span,
+    .selected-header-content span {
+        display: block;
+        overflow-wrap: break-word;
+        width: 100%;
+        word-break: normal;
+    }
     .remove-btn,
     #remove-all-btn {
+        align-self: flex-end;
         min-height: 24px;
+        margin-left: 0;
         padding: 2px 4px;
         font-size: 9px;
     }
