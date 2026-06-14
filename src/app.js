@@ -371,17 +371,42 @@ $(document).ready(() => {
       .sort(compareRu);
   };
 
-  const moveMatchedEffectsLeft = (effects, matchedEffects) => {
-    if (!matchedEffects.size) return effects;
+  const getEffectMatchesSelectedPolarity = effect => {
+    if (selectedPolarity === POLARITY.positive) return positiveEffects.has(effect);
+    if (selectedPolarity === POLARITY.negative) return negativeEffects.has(effect);
+    return false;
+  };
 
-    return [
-      ...effects.filter(effect => matchedEffects.has(effect)),
-      ...effects.filter(effect => !matchedEffects.has(effect))
-    ];
+  const orderEffectsByPriority = (effects, getPriority) => effects
+    .map((effect, index) => ({ effect, index, priority: getPriority(effect) }))
+    .sort((a, b) => a.priority - b.priority || a.index - b.index)
+    .map(item => item.effect);
+
+  const orderSelectedEffects = (effects, matchedEffects) => {
+    if (!selectedPolarity) {
+      return orderEffectsByPriority(effects, effect => (matchedEffects.has(effect) ? 0 : 1));
+    }
+
+    return orderEffectsByPriority(effects, effect => {
+      if (!getEffectMatchesSelectedPolarity(effect)) return 2;
+      return matchedEffects.has(effect) ? 0 : 1;
+    });
+  };
+
+  const orderCombinationEffects = (effects, matchedEffects) => orderEffectsByPriority(effects, effect => {
+    if (matchedEffects.has(effect)) return 0;
+    if (getEffectMatchesSelectedPolarity(effect)) return 1;
+    return 2;
+  });
+
+  const orderBrewResultEffects = effects => {
+    if (!selectedPolarity) return effects;
+
+    return orderEffectsByPriority(effects, effect => (getEffectMatchesSelectedPolarity(effect) ? 0 : 1));
   };
 
   const createBrewResultRow = selectedIngredients => {
-    const resultEffects = getBrewResultEffects(selectedIngredients);
+    const resultEffects = orderBrewResultEffects(getBrewResultEffects(selectedIngredients));
     const $row = $('<tr>').addClass('brew-result-row');
 
     $('<td>')
@@ -495,7 +520,7 @@ $(document).ready(() => {
     selectedIngredients.forEach(ingredient => {
       const $row = createIngredientRow(ingredient, {
         firstCellClass: selectedClasses.get(ingredient.name) || getIngredientClass(ingredient),
-        effects: moveMatchedEffectsLeft(ingredient.effects, matchedEffects)
+        effects: orderSelectedEffects(ingredient.effects, matchedEffects)
       });
       const $nameCell = $row.find('td:first-child');
 
@@ -568,7 +593,9 @@ $(document).ready(() => {
 
     finalCombinationNames.forEach(name => {
       const ingredient = ingredientByName.get(name);
-      createIngredientRow(ingredient).appendTo(fragment);
+      createIngredientRow(ingredient, {
+        effects: orderCombinationEffects(ingredient.effects, effectsToShow)
+      }).appendTo(fragment);
     });
 
     const excludedMatchMessage = selectedPolarity === POLARITY.positive
