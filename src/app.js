@@ -448,7 +448,8 @@ $(document).ready(() => {
         const effectClass = getEffectClass(effect);
         createCell({
           text: effect,
-          className: `brew-result-effects ${effectClass} ${effectClass ? `hint-${effectClass}` : ''}`
+          className: `brew-result-effects effect-cell ${effectClass} ${effectClass ? `hint-${effectClass}` : ''}`,
+          data: { effect }
         }).appendTo($row);
       });
     }
@@ -548,7 +549,8 @@ $(document).ready(() => {
     selectedIngredients.forEach(ingredient => {
       const $row = createIngredientRow(ingredient, {
         firstCellClass: selectedClasses.get(ingredient.name) || getIngredientClass(ingredient),
-        effects: orderSelectedEffects(ingredient.effects, matchedEffects)
+        effects: orderSelectedEffects(ingredient.effects, matchedEffects),
+        isEffectClickable: true
       });
       const $nameCell = $row.find('td:first-child');
 
@@ -697,6 +699,20 @@ $(document).ready(() => {
   const setSelectedEffect = effect => {
     selectedEffect = effect;
     renderTable();
+  };
+
+  const scrollToEffectTable = () => {
+    const $target = $effectTitle.is(':visible') ? $effectTitle : $('#data-table');
+    const top = $target.offset()?.top;
+
+    if (typeof top === 'number') {
+      $('html, body').animate({ scrollTop: Math.max(top - 8, 0) }, 'fast');
+    }
+  };
+
+  const setSelectedEffectAndScroll = effect => {
+    setSelectedEffect(effect);
+    scrollToEffectTable();
   };
 
   const clearSelectedEffect = () => {
@@ -1181,6 +1197,10 @@ $(document).ready(() => {
 
   $selectionTableBody.on('click', '.remove-btn', function () {
     removeIngredient($(this).data('name'));
+  });
+
+  $selectionTableBody.on('click', '.effect-cell', function () {
+    setSelectedEffectAndScroll($(this).data('effect'));
   });
 
   $removeAllBtn.on('click', clearSelection);

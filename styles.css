@@ -78,6 +78,9 @@ th { background-color: #f2f2f2; cursor: default; }
 .brew-result-effects.hint-mixed {
     background: linear-gradient(90deg, var(--hint-negative-bg) 50%, var(--hint-positive-bg) 50%);
 }
+.effect-cell {
+    cursor: pointer;
+}
 .menu {
     display: none;
     position: absolute;
