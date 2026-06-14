@@ -2,50 +2,26 @@
 """Универсальный скрипт обслуживания репозитория alchemy.
 
 Задачи:
-- Генерирует data/CACO/effects.json из data/CACO/data.json
+- Выполняет обслуживание data.json/effects.json/positive_negative_data.json одним действием
 - Проверяет наличие всех имен из data/datab.json в JSON-файлах под data/
-- Назначает effect_state в data/data.json на основе data/positive_negative_data.json
-- Сортирует data.json и effects.json
-- Сортирует positive_negative_data.json в data/ и подпапках
+- Сопоставляет похожие эффекты стандартного data.json и CACO
 - Показывает количество ингредиентов и список имён
-- Интегрирует функции из корневых скриптов add.py, sort.py, name.py и verify_datab.py
 """
 
 import argparse
 import json
-import runpy
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+DATA_FILE_NAME = 'data.json'
+EFFECTS_FILE_NAME = 'effects.json'
 POSITIVE_NEGATIVE_FILE_NAME = 'positive_negative_data.json'
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-try:
-    import add as add_module
-except ImportError:
-    add_module = None
-
-try:
-    import sort as sort_module
-except ImportError:
-    sort_module = None
-
-try:
-    import name as name_module
-except ImportError:
-    name_module = None
-
-try:
-    import scripts.verify_datab as verify_datab_module
-except ImportError:
-    verify_datab_module = None
-
 
 def load_json(path: Path):
-    if add_module is not None:
-        return add_module.load_json(path)
     with path.open('r', encoding='utf-8') as f:
         return json.load(f)
 
@@ -56,37 +32,106 @@ def save_json(path: Path, data):
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
-def generate_caco_effects(caco_root: Path):
-    caco_data_path = caco_root / 'data.json'
-    caco_effects_path = caco_root / 'effects.json'
+def sort_key(value):
+    return str(value).lower()
 
-    if not caco_data_path.exists():
-        raise FileNotFoundError(f'Файл CACO data.json не найден: {caco_data_path}')
 
-    caco_data = load_json(caco_data_path)
+def build_effects_entries(data):
     effect_map = {}
-    for item in caco_data:
+    for item in data:
+        if not isinstance(item, dict):
+            continue
         name = item.get('name')
+        if not name:
+            continue
         for effect in item.get('effects', []):
-            effect_map.setdefault(effect, []).append(name)
+            effect_map.setdefault(effect, set()).add(name)
 
-    output = [
-        {'effect': effect, 'names': sorted(names, key=lambda v: v.lower())}
-        for effect, names in sorted(effect_map.items(), key=lambda pair: pair[0].lower())
+    return [
+        {'effect': effect, 'names': sorted(names, key=sort_key)}
+        for effect, names in sorted(effect_map.items(), key=lambda pair: sort_key(pair[0]))
     ]
-    save_json(caco_effects_path, output)
-    return len(output)
+
+
+def get_effect_state(effects, positive_effects, negative_effects):
+    has_positive = any(effect in positive_effects for effect in effects)
+    has_negative = any(effect in negative_effects for effect in effects)
+
+    if has_positive and not has_negative:
+        return 1
+    if has_negative and not has_positive:
+        return -1
+    return 0
+
+
+def sort_data_file(data_path: Path):
+    data = load_json(data_path)
+    if not isinstance(data, list):
+        raise ValueError(f'Файл должен содержать список JSON: {data_path}')
+
+    sorted_data = sorted(
+        data,
+        key=lambda item: sort_key(item.get('name', '')) if isinstance(item, dict) else ''
+    )
+    changed = data != sorted_data
+
+    if changed:
+        save_json(data_path, sorted_data)
+
+    return {'changed': changed, 'items_count': len(sorted_data)}
+
+
+def update_effects_json(data_path: Path, effects_path: Path):
+    data = load_json(data_path)
+    if not isinstance(data, list):
+        raise ValueError(f'Файл должен содержать список JSON: {data_path}')
+
+    effects = build_effects_entries(data)
+    old_effects = load_json(effects_path) if effects_path.exists() else None
+    changed = old_effects != effects
+
+    if changed:
+        save_json(effects_path, effects)
+
+    return {'changed': changed, 'effects_count': len(effects)}
+
+
+def update_missing_effect_state(data_path: Path, pn_path: Path):
+    data = load_json(data_path)
+    pn = load_json(pn_path)
+    positive = set(pn.get('positive_effects', []))
+    negative = set(pn.get('negative_effects', []))
+
+    added = []
+    mismatches = []
+
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+
+        expected_state = get_effect_state(item.get('effects', []), positive, negative)
+        if 'effect_state' not in item:
+            item['effect_state'] = expected_state
+            added.append((item.get('name'), expected_state))
+        elif item.get('effect_state') != expected_state:
+            mismatches.append((item.get('name'), item.get('effect_state'), expected_state))
+
+    if added:
+        save_json(data_path, data)
+
+    return {
+        'added': added,
+        'mismatches': mismatches,
+        'skipped': False,
+    }
 
 
 def verify_datab(datab_path: Path, root_folder: Path, report_path: Path):
-    if verify_datab_module is not None and hasattr(verify_datab_module, 'load_names'):
-        datab_names = verify_datab_module.load_names(datab_path)
-    else:
-        datab_names = []
-        datab_json = load_json(datab_path)
-        for item in datab_json:
-            if isinstance(item, dict) and 'name' in item:
-                datab_names.append(item['name'])
+    datab_names = []
+    datab_json = load_json(datab_path)
+    for item in datab_json:
+        if isinstance(item, dict) and 'name' in item:
+            datab_names.append(item['name'])
 
     found_map = {}
     for fp in root_folder.rglob('*.json'):
@@ -119,67 +164,6 @@ def verify_datab(datab_path: Path, root_folder: Path, report_path: Path):
     }
     save_json(report_path, report)
     return report
-
-
-def fix_effect_state(data_path: Path, pn_path: Path):
-    data = load_json(data_path)
-    pn = load_json(pn_path)
-    positive = set(pn.get('positive_effects', []))
-    negative = set(pn.get('negative_effects', []))
-
-    changes = []
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        effects = item.get('effects', [])
-        has_positive = any(effect in positive for effect in effects)
-        has_negative = any(effect in negative for effect in effects)
-
-        if has_positive and not has_negative:
-            new_state = 1
-        elif has_negative and not has_positive:
-            new_state = -1
-        else:
-            new_state = 0
-
-        if item.get('effect_state') != new_state:
-            changes.append((item.get('name'), item.get('effect_state'), new_state))
-            item['effect_state'] = new_state
-
-    if changes:
-        save_json(data_path, data)
-    return changes
-
-
-def sync_effects_json(data_path: Path, effects_path: Path):
-    data = load_json(data_path)
-    effects = load_json(effects_path)
-
-    effect_to_ingredients = {}
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        name = item.get('name')
-        for effect in item.get('effects', []):
-            effect_to_ingredients.setdefault(effect, set()).add(name)
-
-    updated = 0
-    for effect_entry in effects:
-        if not isinstance(effect_entry, dict):
-            continue
-        effect_name = effect_entry.get('effect')
-        if effect_name is None:
-            continue
-        existing_names = set(effect_entry.get('names', []))
-        all_names = effect_to_ingredients.get(effect_name, set())
-        missing = sorted(all_names - existing_names, key=lambda x: x.lower())
-        if missing:
-            effect_entry['names'].extend(missing)
-            effect_entry['names'] = sorted(set(effect_entry['names']), key=lambda x: x.lower())
-            updated += 1
-
-    save_json(effects_path, effects)
-    return updated
 
 
 def build_effect_ingredient_map(data, shared_names):
@@ -320,28 +304,6 @@ def save_caco_effect_matches(data_path: Path, caco_data_path: Path, report_path:
     return report
 
 
-def sort_files(data_path: Path, effects_path: Path):
-    if sort_module is not None and hasattr(sort_module, 'sort_data_json') and hasattr(sort_module, 'sort_effects_json'):
-        try:
-            sort_module.sort_data_json()
-            sort_module.sort_effects_json()
-            return True
-        except Exception:
-            pass
-
-    data = load_json(data_path)
-    data.sort(key=lambda x: x.get('name', '').lower())
-    save_json(data_path, data)
-
-    effects = load_json(effects_path)
-    effects.sort(key=lambda x: x.get('effect', '').lower())
-    for effect_entry in effects:
-        if isinstance(effect_entry, dict) and isinstance(effect_entry.get('names'), list):
-            effect_entry['names'].sort(key=lambda x: x.lower())
-    save_json(effects_path, effects)
-    return True
-
-
 def sort_positive_negative_file(pn_path: Path):
     data = load_json(pn_path)
     if not isinstance(data, dict):
@@ -391,6 +353,87 @@ def sort_positive_negative_files(data_root: Path):
     }
 
 
+def find_data_files(data_root: Path):
+    return sorted(
+        data_root.rglob(DATA_FILE_NAME),
+        key=lambda path: str(path.relative_to(ROOT)).lower()
+    )
+
+
+def find_effect_state_source(data_path: Path, data_root: Path):
+    local_pn = data_path.parent / POSITIVE_NEGATIVE_FILE_NAME
+    if local_pn.exists():
+        return local_pn
+
+    root_pn = data_root / POSITIVE_NEGATIVE_FILE_NAME
+    return root_pn if root_pn.exists() else None
+
+
+def maintain_data(data_root: Path):
+    data_files = find_data_files(data_root)
+    positive_negative_result = sort_positive_negative_files(data_root)
+    data_results = []
+
+    for data_path in data_files:
+        effects_path = data_path.parent / EFFECTS_FILE_NAME
+        pn_path = find_effect_state_source(data_path, data_root)
+
+        data_sort_result = sort_data_file(data_path)
+        state_result = (
+            update_missing_effect_state(data_path, pn_path)
+            if pn_path is not None
+            else {'added': [], 'mismatches': [], 'skipped': True}
+        )
+        effects_result = update_effects_json(data_path, effects_path)
+
+        data_results.append({
+            'data_path': data_path,
+            'effects_path': effects_path,
+            'positive_negative_path': pn_path,
+            'data_sorted': data_sort_result['changed'],
+            'effect_state_added': state_result['added'],
+            'effect_state_mismatches': state_result['mismatches'],
+            'effect_state_skipped': state_result['skipped'],
+            'effects_changed': effects_result['changed'],
+            'effects_count': effects_result['effects_count'],
+        })
+
+    return {
+        'data_files': data_files,
+        'positive_negative': positive_negative_result,
+        'data_results': data_results,
+    }
+
+
+def print_maintenance_report(result):
+    print(f'Найдено data.json: {len(result["data_files"])}')
+    print(f'Отсортировано positive_negative_data.json: {len(result["positive_negative"]["changed"])}')
+
+    sorted_data_count = sum(1 for item in result['data_results'] if item['data_sorted'])
+    changed_effects_count = sum(1 for item in result['data_results'] if item['effects_changed'])
+    added_state_count = sum(len(item['effect_state_added']) for item in result['data_results'])
+    mismatch_count = sum(len(item['effect_state_mismatches']) for item in result['data_results'])
+
+    print(f'Отсортировано data.json: {sorted_data_count}')
+    print(f'Создано или обновлено effects.json: {changed_effects_count}')
+    print(f'Добавлено отсутствующих effect_state: {added_state_count}')
+    print(f'Найдено несовпадающих effect_state: {mismatch_count}')
+
+    for item in result['data_results']:
+        changed_parts = []
+        if item['data_sorted']:
+            changed_parts.append('data.json')
+        if item['effects_changed']:
+            changed_parts.append('effects.json')
+        if item['effect_state_added']:
+            changed_parts.append(f'effect_state +{len(item["effect_state_added"])}')
+        if item['effect_state_mismatches']:
+            changed_parts.append(f'проверить effect_state {len(item["effect_state_mismatches"])}')
+
+        if changed_parts:
+            print(f'  {item["data_path"].relative_to(ROOT)}: {", ".join(changed_parts)}')
+
+
 def print_data_count(data_path: Path):
     data = load_json(data_path)
     print(f'Всего ингредиентов в {data_path}: {len(data)}')
@@ -398,35 +441,23 @@ def print_data_count(data_path: Path):
 
 
 def print_ingredient_names(data_path: Path):
-    if name_module is not None and hasattr(name_module, 'print_ingredients_with_numbers'):
-        return name_module.print_ingredients_with_numbers()
-
     data = load_json(data_path)
     for index, item in enumerate(data, start=1):
         print(f'{index}. {item.get("name")}')
     return len(data)
 
 
-def run_root_script(path: Path):
-    runpy.run_path(str(path), run_name='__main__')
-
-
 def interactive_menu():
     data_root = ROOT / 'data'
     report_path = data_root / 'verification_report.json'
     data_json = data_root / 'data.json'
-    effects_json = data_root / 'effects.json'
     datab_json = data_root / 'datab.json'
-    pn_json = data_root / 'positive_negative_data.json'
     caco_root = data_root / 'CACO'
     caco_effect_matches_report = caco_root / 'effect_matches_report.json'
 
-    def action_generate_caco_effects():
-        if not caco_root.exists():
-            print('Папка CACO не найдена.')
-            return
-        count = generate_caco_effects(caco_root)
-        print(f'Сгенерировано эффектов в data/CACO/effects.json: {count}')
+    def action_maintain_data():
+        result = maintain_data(data_root)
+        print_maintenance_report(result)
 
     def action_verify_datab():
         if not datab_json.exists():
@@ -436,25 +467,6 @@ def interactive_menu():
         print(f'Отчёт проверки записан в {report_path}')
         print(f'Найдено: {report["present_count"]}, отсутствует: {report["missing_count"]}')
 
-    def action_fix_effect_state():
-        changes = fix_effect_state(data_json, pn_json)
-        if changes:
-            print(f'Обновлено значение effect_state у ингредиентов: {len(changes)}')
-            for name, old, new in changes:
-                print(f'  {name}: {old} -> {new}')
-        else:
-            print('Значения effect_state уже корректны.')
-
-    def action_sync_effects():
-        try:
-            changes = sync_effects_json(data_json, effects_json)
-            if changes:
-                print(f'effects.json синхронизирован с data.json; обновлено эффектов: {len(changes)}')
-            else:
-                print('effects.json уже синхронизирован с data.json.')
-        except Exception as exc:
-            print(f'Не удалось синхронизировать effects.json: {exc}')
-
     def action_find_caco_effect_matches():
         report = save_caco_effect_matches(data_json, caco_root / 'data.json', caco_effect_matches_report)
         print(f'Отчёт записан в {caco_effect_matches_report.relative_to(ROOT)}')
@@ -463,38 +475,18 @@ def interactive_menu():
         print(f'Вероятных совпадений: {len(report["вероятные_совпадения"])}')
         print(f'Требуют ручной проверки: {len(report["нужно_проверить_вручную"])}')
 
-    def action_sort_files():
-        sort_files(data_json, effects_json)
-        print('data.json и effects.json отсортированы.')
-
-    def action_sort_positive_negative_files():
-        result = sort_positive_negative_files(data_root)
-        print(f'Найдено файлов {POSITIVE_NEGATIVE_FILE_NAME}: {len(result["files"])}')
-        print(f'Отсортировано файлов: {len(result["changed"])}')
-        if result['changed']:
-            for path in result['changed']:
-                print(f'  {path.relative_to(ROOT)}')
-
     def action_print_count():
         print_data_count(data_json)
 
     def action_list_names():
         print_ingredient_names(data_json)
 
-    def action_run_common():
-        run_common_scripts()
-
     menu = [
-        ('Сгенерировать data/CACO/effects.json', action_generate_caco_effects),
+        ('Выполнить универсальное обслуживание данных', action_maintain_data),
         ('Проверить покрытие data/datab.json', action_verify_datab),
-        ('Исправить effect_state в data/data.json', action_fix_effect_state),
-        ('Синхронизировать data/effects.json с data/data.json', action_sync_effects),
         ('Сопоставить эффекты data.json и CACO', action_find_caco_effect_matches),
-        ('Отсортировать data.json и effects.json', action_sort_files),
-        ('Отсортировать positive_negative_data.json', action_sort_positive_negative_files),
         ('Показать количество ингредиентов', action_print_count),
         ('Показать список ингредиентов', action_list_names),
-        ('Запустить общие корневые скрипты', action_run_common),
         ('Выход', None),
     ]
 
@@ -519,32 +511,14 @@ def interactive_menu():
             print(f'Ошибка выполнения задачи: {exc}')
 
 
-def run_common_scripts():
-    for common_name in ['add.py', 'calc.py', 'effect.py', 'name.py', 'sort.py']:
-        script_path = ROOT / common_name
-        if script_path.exists():
-            print(f'-- Запуск {common_name} --')
-            try:
-                run_root_script(script_path)
-            except Exception as exc:
-                print(f'Не удалось запустить {common_name}: {exc}')
-        else:
-            print(f'{common_name} не найден.')
-
-
 def main():
     parser = argparse.ArgumentParser(description='Универсальный скрипт обслуживания репозитория alchemy.')
     parser.add_argument('--no-interactive', action='store_true', help='Отключить интерактивное меню и использовать флаги.')
-    parser.add_argument('--generate-caco-effects', action='store_true', help='Сгенерировать data/CACO/effects.json из data/CACO/data.json.')
+    parser.add_argument('--maintain-data', action='store_true', help='Выполнить сортировку, заполнение отсутствующего effect_state и обновление effects.json.')
     parser.add_argument('--verify-datab', action='store_true', help='Проверить покрытие data/datab.json внутри папки data/.')
-    parser.add_argument('--fix-effect-state', action='store_true', help='Обновить effect_state в data/data.json по data/positive_negative_data.json.')
-    parser.add_argument('--sync-effects', action='store_true', help='Синхронизировать data/effects.json с data/data.json.')
     parser.add_argument('--caco-effect-matches', action='store_true', help='Сопоставить эффекты стандартного data.json и CACO по общим ингредиентам.')
-    parser.add_argument('--sort', action='store_true', help='Отсортировать data.json и effects.json.')
-    parser.add_argument('--sort-positive-negative', action='store_true', help='Отсортировать все positive_negative_data.json в папке data/.')
     parser.add_argument('--count', action='store_true', help='Показать количество ингредиентов из data/data.json.')
     parser.add_argument('--list-names', action='store_true', help='Показать имена ингредиентов из data/data.json.')
-    parser.add_argument('--run-common', action='store_true', help='Запустить общие корневые скрипты alchemy/*.py.')
     args = parser.parse_args()
 
     if len(sys.argv) == 1 or not args.no_interactive:
@@ -554,15 +528,13 @@ def main():
     data_root = ROOT / 'data'
     report_path = data_root / 'verification_report.json'
     data_json = data_root / 'data.json'
-    effects_json = data_root / 'effects.json'
     datab_json = data_root / 'datab.json'
-    pn_json = data_root / 'positive_negative_data.json'
     caco_root = data_root / 'CACO'
     caco_effect_matches_report = caco_root / 'effect_matches_report.json'
 
-    if args.generate_caco_effects:
-        count = generate_caco_effects(caco_root)
-        print(f'Сгенерирован data/CACO/effects.json. Эффектов: {count}')
+    if args.maintain_data:
+        result = maintain_data(data_root)
+        print_maintenance_report(result)
 
     if args.verify_datab:
         if not datab_json.exists():
@@ -572,25 +544,6 @@ def main():
             print(f'Отчёт проверки записан в {report_path}')
             print(f"Найдено: {report['present_count']}, отсутствует: {report['missing_count']}")
 
-    if args.fix_effect_state:
-        changes = fix_effect_state(data_json, pn_json)
-        if changes:
-            print(f'Обновлено значение effect_state у ингредиентов: {len(changes)}')
-            for name, old, new in changes:
-                print(f'  {name}: {old} -> {new}')
-        else:
-            print('Значения effect_state уже корректны.')
-
-    if args.sync_effects:
-        try:
-            changes = sync_effects_json(data_json, effects_json)
-            if changes:
-                print(f'effects.json синхронизирован с data.json; обновлено эффектов: {len(changes)}')
-            else:
-                print('effects.json уже синхронизирован с data.json.')
-        except Exception as exc:
-            print(f'Не удалось синхронизировать effects.json: {exc}')
-
     if args.caco_effect_matches:
         report = save_caco_effect_matches(data_json, caco_root / 'data.json', caco_effect_matches_report)
         print(f'Отчёт записан в {caco_effect_matches_report.relative_to(ROOT)}')
@@ -599,26 +552,11 @@ def main():
         print(f'Вероятных совпадений: {len(report["вероятные_совпадения"])}')
         print(f'Требуют ручной проверки: {len(report["нужно_проверить_вручную"])}')
 
-    if args.sort:
-        sort_files(data_json, effects_json)
-        print('data.json и effects.json отсортированы.')
-
-    if args.sort_positive_negative:
-        result = sort_positive_negative_files(data_root)
-        print(f'Найдено файлов {POSITIVE_NEGATIVE_FILE_NAME}: {len(result["files"])}')
-        print(f'Отсортировано файлов: {len(result["changed"])}')
-        if result['changed']:
-            for path in result['changed']:
-                print(f'  {path.relative_to(ROOT)}')
-
     if args.count:
         print_data_count(data_json)
 
     if args.list_names:
         print_ingredient_names(data_json)
-
-    if args.run_common:
-        run_common_scripts()
 
 
 if __name__ == '__main__':
