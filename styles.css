@@ -179,13 +179,29 @@ th { background-color: #f2f2f2; cursor: default; }
 }
 
 @media (max-width: 700px) {
-    body { margin: 8px; }
+    html {
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+    }
+    body {
+        margin: 6px;
+        font-size: 13px;
+    }
+    button {
+        min-height: 34px;
+        padding: 4px 8px;
+    }
+    table {
+        margin-top: 8px;
+    }
     .controls {
         align-items: stretch;
         flex-direction: column;
+        gap: 8px;
     }
     .button-group {
         width: 100%;
+        gap: 6px;
     }
     .button-group button {
         flex: 1 1 0;
@@ -194,15 +210,32 @@ th { background-color: #f2f2f2; cursor: default; }
         left: 0;
         right: 0;
         min-width: 0;
+        padding: 8px;
+    }
+    .menu button {
+        margin: 4px 0;
+    }
+    .effect-search {
+        min-height: 34px;
+        padding: 6px;
     }
     #search {
         width: 100%;
+        min-height: 34px;
+        padding: 6px;
     }
     .search-group {
         width: 100%;
+        gap: 6px;
     }
     .addon-option {
         width: 100%;
+        min-height: 34px;
+        padding: 5px 8px;
+    }
+    .addon-option input {
+        width: 16px;
+        height: 16px;
     }
     #data-table, #selection-table, #combination-table {
         display: block;
@@ -210,14 +243,24 @@ th { background-color: #f2f2f2; cursor: default; }
     }
     #data-table th, #selection-table th, #combination-table th,
     #data-table td, #selection-table td, #combination-table td {
-        width: 150px;
-        min-width: 150px;
+        width: 128px;
+        min-width: 128px;
+        font-size: 12px;
+        line-height: 1.25;
     }
     #data-table .main-hint-effects {
-        width: 600px;
-        min-width: 600px;
+        width: 512px;
+        min-width: 512px;
+    }
+    #data-table .brew-hint-cell {
+        width: 220px;
+        min-width: 220px;
+    }
+    .brew-hint-cell span {
+        min-height: 34px;
+        padding: 5px;
     }
     th, td {
-        padding: 7px;
+        padding: 5px;
     }
 }
