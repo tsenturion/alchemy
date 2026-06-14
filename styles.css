@@ -184,20 +184,21 @@ th { background-color: #f2f2f2; cursor: default; }
         text-size-adjust: 100%;
     }
     body {
-        margin: 6px;
-        font-size: 13px;
+        margin: 0;
+        font-size: 12px;
     }
     button {
-        min-height: 34px;
-        padding: 4px 8px;
+        min-height: 30px;
+        padding: 3px 6px;
     }
     table {
-        margin-top: 8px;
+        margin-top: 7px;
     }
     .controls {
         align-items: stretch;
         flex-direction: column;
-        gap: 8px;
+        gap: 6px;
+        padding: 6px;
     }
     .button-group {
         width: 100%;
@@ -216,13 +217,13 @@ th { background-color: #f2f2f2; cursor: default; }
         margin: 4px 0;
     }
     .effect-search {
-        min-height: 34px;
-        padding: 6px;
+        min-height: 30px;
+        padding: 5px;
     }
     #search {
         width: 100%;
-        min-height: 34px;
-        padding: 6px;
+        min-height: 30px;
+        padding: 5px;
     }
     .search-group {
         width: 100%;
@@ -230,37 +231,53 @@ th { background-color: #f2f2f2; cursor: default; }
     }
     .addon-option {
         width: 100%;
-        min-height: 34px;
-        padding: 5px 8px;
+        min-height: 30px;
+        padding: 4px 6px;
     }
     .addon-option input {
         width: 16px;
         height: 16px;
     }
     #data-table, #selection-table, #combination-table {
-        display: block;
-        overflow-x: auto;
+        display: table;
+        table-layout: fixed;
+        overflow-x: visible;
+        width: 100%;
+        max-width: 100%;
     }
     #data-table th, #selection-table th, #combination-table th,
     #data-table td, #selection-table td, #combination-table td {
-        width: 128px;
-        min-width: 128px;
-        font-size: 12px;
-        line-height: 1.25;
+        width: 20%;
+        min-width: 0;
+        font-size: 10px;
+        line-height: 1.15;
+        overflow-wrap: anywhere;
+        word-break: break-word;
     }
     #data-table .main-hint-effects {
-        width: 512px;
-        min-width: 512px;
+        width: 80%;
+        min-width: 0;
     }
     #data-table .brew-hint-cell {
-        width: 220px;
-        min-width: 220px;
+        width: 20%;
+        min-width: 0;
     }
     .brew-hint-cell span {
-        min-height: 34px;
-        padding: 5px;
+        min-height: 30px;
+        padding: 3px;
+        font-size: 9px;
+        white-space: normal;
+    }
+    .table-title {
+        padding: 0 6px;
+    }
+    .remove-btn,
+    #remove-all-btn {
+        min-height: 24px;
+        padding: 2px 4px;
+        font-size: 9px;
     }
     th, td {
-        padding: 5px;
+        padding: 3px;
     }
 }
