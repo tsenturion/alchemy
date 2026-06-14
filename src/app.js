@@ -572,8 +572,8 @@ $(document).ready(() => {
     });
 
     const excludedMatchMessage = selectedPolarity === POLARITY.positive
-      ? 'Исключены отрицательные совпадения.'
-      : 'Исключены положительные совпадения.';
+      ? 'Исключены отрицательные совпадения'
+      : 'Исключены положительные совпадения';
 
     $combinationTableBody.empty().append(fragment);
     $combinationTitle
