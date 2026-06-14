@@ -6,6 +6,7 @@
 - Проверяет наличие всех имен из data/datab.json в JSON-файлах под data/
 - Назначает effect_state в data/data.json на основе data/positive_negative_data.json
 - Сортирует data.json и effects.json
+- Сортирует positive_negative_data.json в data/ и подпапках
 - Показывает количество ингредиентов и список имён
 - Интегрирует функции из корневых скриптов add.py, sort.py, name.py и verify_datab.py
 """
@@ -14,11 +15,10 @@ import argparse
 import json
 import runpy
 import sys
-from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BACKUP_DIR = ROOT / 'data' / 'backups'
+POSITIVE_NEGATIVE_FILE_NAME = 'positive_negative_data.json'
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -50,28 +50,8 @@ def load_json(path: Path):
         return json.load(f)
 
 
-def get_backup_path(path: Path):
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    return BACKUP_DIR / f'backup_{path.stem}_{timestamp}{path.suffix}'
-
-
-def backup_file(path: Path):
-    if not path.exists():
-        return None
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    backup_path = get_backup_path(path)
-    backup_path.write_bytes(path.read_bytes())
-    return backup_path
-
-
 def save_json(path: Path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        backup = backup_file(path)
-        if backup is not None:
-            print(f'Создана резервная копия {path.name}: {backup.relative_to(ROOT)}')
-    if add_module is not None:
-        return add_module.save_json(path, data)
     with path.open('w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
@@ -362,6 +342,55 @@ def sort_files(data_path: Path, effects_path: Path):
     return True
 
 
+def sort_positive_negative_file(pn_path: Path):
+    data = load_json(pn_path)
+    if not isinstance(data, dict):
+        raise ValueError(f'Файл должен содержать объект JSON: {pn_path}')
+
+    changed = False
+    for key in ('positive_effects', 'negative_effects'):
+        values = data.get(key)
+        if values is None:
+            continue
+        if not isinstance(values, list):
+            raise ValueError(f'Поле {key} должно быть списком: {pn_path}')
+
+        sorted_values = sorted(values, key=lambda value: str(value).lower())
+        if values != sorted_values:
+            data[key] = sorted_values
+            changed = True
+
+    if changed:
+        save_json(pn_path, data)
+
+    return changed
+
+
+def find_positive_negative_files(data_root: Path):
+    return sorted(
+        data_root.rglob(POSITIVE_NEGATIVE_FILE_NAME),
+        key=lambda path: str(path.relative_to(ROOT)).lower()
+    )
+
+
+def sort_positive_negative_files(data_root: Path):
+    files = find_positive_negative_files(data_root)
+    changed_files = []
+    unchanged_files = []
+
+    for pn_path in files:
+        if sort_positive_negative_file(pn_path):
+            changed_files.append(pn_path)
+        else:
+            unchanged_files.append(pn_path)
+
+    return {
+        'files': files,
+        'changed': changed_files,
+        'unchanged': unchanged_files,
+    }
+
+
 def print_data_count(data_path: Path):
     data = load_json(data_path)
     print(f'Всего ингредиентов в {data_path}: {len(data)}')
@@ -438,6 +467,14 @@ def interactive_menu():
         sort_files(data_json, effects_json)
         print('data.json и effects.json отсортированы.')
 
+    def action_sort_positive_negative_files():
+        result = sort_positive_negative_files(data_root)
+        print(f'Найдено файлов {POSITIVE_NEGATIVE_FILE_NAME}: {len(result["files"])}')
+        print(f'Отсортировано файлов: {len(result["changed"])}')
+        if result['changed']:
+            for path in result['changed']:
+                print(f'  {path.relative_to(ROOT)}')
+
     def action_print_count():
         print_data_count(data_json)
 
@@ -454,13 +491,13 @@ def interactive_menu():
         ('Синхронизировать data/effects.json с data/data.json', action_sync_effects),
         ('Сопоставить эффекты data.json и CACO', action_find_caco_effect_matches),
         ('Отсортировать data.json и effects.json', action_sort_files),
+        ('Отсортировать positive_negative_data.json', action_sort_positive_negative_files),
         ('Показать количество ингредиентов', action_print_count),
         ('Показать список ингредиентов', action_list_names),
         ('Запустить общие корневые скрипты', action_run_common),
         ('Выход', None),
     ]
 
-    print(f'Папка резервных копий: {BACKUP_DIR.relative_to(ROOT)}')
     while True:
         print('\nМеню обслуживания alchemy:')
         for index, (title, _) in enumerate(menu, start=1):
@@ -504,6 +541,7 @@ def main():
     parser.add_argument('--sync-effects', action='store_true', help='Синхронизировать data/effects.json с data/data.json.')
     parser.add_argument('--caco-effect-matches', action='store_true', help='Сопоставить эффекты стандартного data.json и CACO по общим ингредиентам.')
     parser.add_argument('--sort', action='store_true', help='Отсортировать data.json и effects.json.')
+    parser.add_argument('--sort-positive-negative', action='store_true', help='Отсортировать все positive_negative_data.json в папке data/.')
     parser.add_argument('--count', action='store_true', help='Показать количество ингредиентов из data/data.json.')
     parser.add_argument('--list-names', action='store_true', help='Показать имена ингредиентов из data/data.json.')
     parser.add_argument('--run-common', action='store_true', help='Запустить общие корневые скрипты alchemy/*.py.')
@@ -564,6 +602,14 @@ def main():
     if args.sort:
         sort_files(data_json, effects_json)
         print('data.json и effects.json отсортированы.')
+
+    if args.sort_positive_negative:
+        result = sort_positive_negative_files(data_root)
+        print(f'Найдено файлов {POSITIVE_NEGATIVE_FILE_NAME}: {len(result["files"])}')
+        print(f'Отсортировано файлов: {len(result["changed"])}')
+        if result['changed']:
+            for path in result['changed']:
+                print(f'  {path.relative_to(ROOT)}')
 
     if args.count:
         print_data_count(data_json)
