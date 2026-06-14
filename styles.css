@@ -9,15 +9,11 @@ body { font-family: Arial, sans-serif; margin: 12px; }
 button, input { font: inherit; }
 button { min-height: 40px; }
 #app-root {
-    zoom: var(--app-zoom, 1);
     touch-action: pan-x pan-y;
-}
-@supports not (zoom: 1) {
-    #app-root {
-        transform: scale(var(--app-zoom, 1));
-        transform-origin: top left;
-        width: calc(100% / var(--app-zoom, 1));
-    }
+    transform: scale(var(--app-zoom, 1));
+    transform-origin: top left;
+    width: 100%;
+    will-change: transform;
 }
 table { width: 100%; border-collapse: collapse; margin-top: 10px; }
 th, td { border: 1px solid black; padding: 8px; text-align: left; }

@@ -84,6 +84,7 @@ $(document).ready(() => {
   let pinchZoomStartDistance = null;
   let pinchZoomStartValue = 1;
   let isPinchingZoom = false;
+  let appZoomAnimationFrame = null;
 
   const $appRoot = $('#app-root');
   const $addonsBtn = $('#addons-btn');
@@ -135,12 +136,31 @@ $(document).ready(() => {
 
   const applyAppZoom = () => {
     $appRoot.css('--app-zoom', appZoom);
+    $appRoot.css('width', `${100 / appZoom}%`);
+  };
+
+  const scheduleAppZoom = () => {
+    if (appZoomAnimationFrame !== null) return;
+
+    appZoomAnimationFrame = window.requestAnimationFrame(() => {
+      appZoomAnimationFrame = null;
+      applyAppZoom();
+    });
   };
 
   const setAppZoom = (value, options = {}) => {
-    const { save = true } = options;
-    appZoom = roundZoom(clampZoom(value));
-    applyAppZoom();
+    const { save = true, immediate = true, round = true } = options;
+    appZoom = clampZoom(value);
+
+    if (round) {
+      appZoom = roundZoom(appZoom);
+    }
+
+    if (immediate) {
+      applyAppZoom();
+    } else {
+      scheduleAppZoom();
+    }
 
     if (save) {
       saveAppZoom();
@@ -1286,11 +1306,12 @@ $(document).ready(() => {
 
     if (distance === null) return;
 
+    event.preventDefault();
     pinchZoomStartDistance = distance;
     pinchZoomStartValue = appZoom;
     isPinchingZoom = true;
     closeMenus();
-  }, { passive: true });
+  }, { passive: false });
 
   document.addEventListener('touchmove', event => {
     const distance = getTouchDistance(event.touches);
@@ -1298,7 +1319,11 @@ $(document).ready(() => {
     if (!isPinchingZoom || distance === null || !pinchZoomStartDistance) return;
 
     event.preventDefault();
-    setAppZoom(pinchZoomStartValue * (distance / pinchZoomStartDistance), { save: false });
+    setAppZoom(pinchZoomStartValue * (distance / pinchZoomStartDistance), {
+      save: false,
+      immediate: false,
+      round: false
+    });
   }, { passive: false });
 
   const finishPinchZoom = () => {
@@ -1306,6 +1331,7 @@ $(document).ready(() => {
 
     isPinchingZoom = false;
     pinchZoomStartDistance = null;
+    setAppZoom(appZoom, { save: false });
     saveAppZoom();
   };
 
