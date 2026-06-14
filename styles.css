@@ -139,18 +139,21 @@ th { background-color: #f2f2f2; cursor: default; }
 }
 #search { min-height: 40px; padding: 8px; }
 #back-btn { display: none; }
-.selected-name-content {
+.selected-name-content,
+.selected-header-content {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
     width: 100%;
 }
-.selected-name-content span {
+.selected-name-content span,
+.selected-header-content span {
     min-width: 0;
     overflow-wrap: anywhere;
 }
-.remove-btn {
+.remove-btn,
+#remove-all-btn {
     flex: 0 0 auto;
     margin-left: auto;
 }
