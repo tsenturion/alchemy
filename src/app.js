@@ -93,6 +93,8 @@ $(document).ready(() => {
   const $selectionTitle = $('#selection-title');
   const $combinationTitle = $('#combination-title');
   const $effectTitle = $('#effect-title');
+  const $effectTitleText = $('#effect-title-text');
+  const $effectBackBtn = $('#effect-back-btn');
   const $mainHintRow = $('#main-hint-row');
   const $removeAllBtn = $('#remove-all-btn');
 
@@ -484,7 +486,8 @@ $(document).ready(() => {
 
   const updateFilterControls = () => {
     $backBtn.toggle(Boolean(selectedEffect));
-    $effectTitle.text(selectedEffect || '').toggle(Boolean(selectedEffect));
+    $effectTitleText.text(selectedEffect || '');
+    $effectTitle.css('display', selectedEffect ? 'flex' : 'none');
     $mainHintRow.toggle(!selectedEffect || selectedNames.size === 0);
   };
 
@@ -1166,7 +1169,7 @@ $(document).ready(() => {
     renderTable();
   });
 
-  $backBtn.on('click', clearSelectedEffect);
+  $backBtn.add($effectBackBtn).on('click', clearSelectedEffect);
 
   $dataTableBody.on('click', 'td:first-child', function (event) {
     addIngredient($(this).data('name'), event);
