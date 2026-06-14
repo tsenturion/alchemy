@@ -10,7 +10,7 @@ button, input { font: inherit; }
 button { min-height: 40px; }
 #app-root {
     touch-action: pan-x pan-y;
-    transform: scale(var(--app-zoom, 1));
+    transform: translate3d(var(--app-pan-x, 0px), var(--app-pan-y, 0px), 0) scale(var(--app-zoom, 1));
     transform-origin: top left;
     width: 100%;
     will-change: transform;

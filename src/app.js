@@ -83,8 +83,14 @@ $(document).ready(() => {
   let appZoom = 1;
   let pinchZoomStartDistance = null;
   let pinchZoomStartValue = 1;
+  let pinchZoomLayoutLeft = 0;
+  let pinchZoomLayoutTop = 0;
+  let pinchZoomContentX = 0;
+  let pinchZoomContentY = 0;
   let isPinchingZoom = false;
   let appZoomAnimationFrame = null;
+  let appZoomPanX = 0;
+  let appZoomPanY = 0;
 
   const $appRoot = $('#app-root');
   const $addonsBtn = $('#addons-btn');
@@ -137,6 +143,8 @@ $(document).ready(() => {
   const applyAppZoom = () => {
     $appRoot.css('--app-zoom', appZoom);
     $appRoot.css('width', `${100 / appZoom}%`);
+    $appRoot.css('--app-pan-x', `${appZoomPanX}px`);
+    $appRoot.css('--app-pan-y', `${appZoomPanY}px`);
   };
 
   const scheduleAppZoom = () => {
@@ -173,6 +181,15 @@ $(document).ready(() => {
     const dx = touches[0].clientX - touches[1].clientX;
     const dy = touches[0].clientY - touches[1].clientY;
     return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const getTouchCenter = touches => {
+    if (touches.length < 2) return null;
+
+    return {
+      clientX: (touches[0].clientX + touches[1].clientX) / 2,
+      clientY: (touches[0].clientY + touches[1].clientY) / 2
+    };
   };
 
   const startAppZoom = () => {
@@ -1303,23 +1320,36 @@ $(document).ready(() => {
 
   document.addEventListener('touchstart', event => {
     const distance = getTouchDistance(event.touches);
+    const center = getTouchCenter(event.touches);
 
-    if (distance === null) return;
+    if (distance === null || center === null) return;
 
     event.preventDefault();
+    const rootRect = $appRoot[0].getBoundingClientRect();
+
     pinchZoomStartDistance = distance;
     pinchZoomStartValue = appZoom;
+    pinchZoomLayoutLeft = rootRect.left - appZoomPanX;
+    pinchZoomLayoutTop = rootRect.top - appZoomPanY;
+    pinchZoomContentX = (center.clientX - rootRect.left) / appZoom;
+    pinchZoomContentY = (center.clientY - rootRect.top) / appZoom;
     isPinchingZoom = true;
     closeMenus();
   }, { passive: false });
 
   document.addEventListener('touchmove', event => {
     const distance = getTouchDistance(event.touches);
+    const center = getTouchCenter(event.touches);
 
-    if (!isPinchingZoom || distance === null || !pinchZoomStartDistance) return;
+    if (!isPinchingZoom || distance === null || center === null || !pinchZoomStartDistance) return;
 
     event.preventDefault();
-    setAppZoom(pinchZoomStartValue * (distance / pinchZoomStartDistance), {
+    const nextZoom = clampZoom(pinchZoomStartValue * (distance / pinchZoomStartDistance));
+
+    appZoomPanX = center.clientX - pinchZoomLayoutLeft - nextZoom * pinchZoomContentX;
+    appZoomPanY = center.clientY - pinchZoomLayoutTop - nextZoom * pinchZoomContentY;
+
+    setAppZoom(nextZoom, {
       save: false,
       immediate: false,
       round: false
@@ -1331,6 +1361,8 @@ $(document).ready(() => {
 
     isPinchingZoom = false;
     pinchZoomStartDistance = null;
+    pinchZoomContentX = 0;
+    pinchZoomContentY = 0;
     setAppZoom(appZoom, { save: false });
     saveAppZoom();
   };
