@@ -8,13 +8,6 @@
 body { font-family: Arial, sans-serif; margin: 12px; }
 button, input { font: inherit; }
 button { min-height: 40px; }
-#app-root {
-    touch-action: pan-x pan-y;
-    transform: translate3d(var(--app-pan-x, 0px), var(--app-pan-y, 0px), 0) scale(var(--app-zoom, 1));
-    transform-origin: top left;
-    width: 100%;
-    will-change: transform;
-}
 table { width: 100%; border-collapse: collapse; margin-top: 10px; }
 th, td { border: 1px solid black; padding: 8px; text-align: left; }
 td { cursor: pointer; }

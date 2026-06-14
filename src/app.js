@@ -7,9 +7,6 @@ $(document).ready(() => {
   const ROOT_DATA_PATH = `${DATA_ROOT}/${DATA_FILE_NAME}`;
   const ROOT_EFFECTS_PATH = `${DATA_ROOT}/${EFFECTS_FILE_NAME}`;
   const ROOT_EFFECT_POLARITY_PATH = `${DATA_ROOT}/${EFFECT_POLARITY_FILE_NAME}`;
-  const APP_ZOOM_STORAGE_KEY = 'alchemy-app-zoom';
-  const APP_ZOOM_MIN = 0.5;
-  const APP_ZOOM_MAX = 1.25;
   const POLARITY = {
     positive: 'positive',
     negative: 'negative',
@@ -80,19 +77,7 @@ $(document).ready(() => {
   let rootPolarityPromise = null;
   let sourceCache = new Map();
   let dataLoadToken = 0;
-  let appZoom = 1;
-  let pinchZoomStartDistance = null;
-  let pinchZoomStartValue = 1;
-  let pinchZoomLayoutLeft = 0;
-  let pinchZoomLayoutTop = 0;
-  let pinchZoomContentX = 0;
-  let pinchZoomContentY = 0;
-  let isPinchingZoom = false;
-  let appZoomAnimationFrame = null;
-  let appZoomPanX = 0;
-  let appZoomPanY = 0;
 
-  const $appRoot = $('#app-root');
   const $addonsBtn = $('#addons-btn');
   const $addonsMenu = $('#addons-menu');
   const $addonsList = $('#addons-list');
@@ -117,85 +102,6 @@ $(document).ready(() => {
   const normalizeAddonKey = value => value.toLowerCase();
   const encodePath = path => path.split('/').map(encodeURIComponent).join('/');
   const compareRu = (a, b) => a.localeCompare(b, 'ru', { sensitivity: 'base' });
-  const isMobileLayout = () => window.matchMedia('(max-width: 700px)').matches;
-  const roundZoom = value => Math.round(value * 100) / 100;
-  const clampZoom = value => Math.min(APP_ZOOM_MAX, Math.max(APP_ZOOM_MIN, value));
-
-  const getDefaultAppZoom = () => (isMobileLayout() ? 0.85 : 1);
-
-  const readStoredAppZoom = () => {
-    try {
-      const storedZoom = Number(window.localStorage.getItem(APP_ZOOM_STORAGE_KEY));
-      return Number.isFinite(storedZoom) ? clampZoom(storedZoom) : getDefaultAppZoom();
-    } catch (error) {
-      return getDefaultAppZoom();
-    }
-  };
-
-  const saveAppZoom = () => {
-    try {
-      window.localStorage.setItem(APP_ZOOM_STORAGE_KEY, String(appZoom));
-    } catch (error) {
-      // Масштаб всё равно работает до перезагрузки, если localStorage недоступен.
-    }
-  };
-
-  const applyAppZoom = () => {
-    $appRoot.css('--app-zoom', appZoom);
-    $appRoot.css('width', `${100 / appZoom}%`);
-    $appRoot.css('--app-pan-x', `${appZoomPanX}px`);
-    $appRoot.css('--app-pan-y', `${appZoomPanY}px`);
-  };
-
-  const scheduleAppZoom = () => {
-    if (appZoomAnimationFrame !== null) return;
-
-    appZoomAnimationFrame = window.requestAnimationFrame(() => {
-      appZoomAnimationFrame = null;
-      applyAppZoom();
-    });
-  };
-
-  const setAppZoom = (value, options = {}) => {
-    const { save = true, immediate = true, round = true } = options;
-    appZoom = clampZoom(value);
-
-    if (round) {
-      appZoom = roundZoom(appZoom);
-    }
-
-    if (immediate) {
-      applyAppZoom();
-    } else {
-      scheduleAppZoom();
-    }
-
-    if (save) {
-      saveAppZoom();
-    }
-  };
-
-  const getTouchDistance = touches => {
-    if (touches.length < 2) return null;
-
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  const getTouchCenter = touches => {
-    if (touches.length < 2) return null;
-
-    return {
-      clientX: (touches[0].clientX + touches[1].clientX) / 2,
-      clientY: (touches[0].clientY + touches[1].clientY) / 2
-    };
-  };
-
-  const startAppZoom = () => {
-    appZoom = roundZoom(readStoredAppZoom());
-    applyAppZoom();
-  };
 
   const fetchJson = async path => {
     const response = await fetch(encodePath(path));
@@ -1318,58 +1224,5 @@ $(document).ready(() => {
     setSelectedEffect($(this).data('effect'));
   });
 
-  document.addEventListener('touchstart', event => {
-    const distance = getTouchDistance(event.touches);
-    const center = getTouchCenter(event.touches);
-
-    if (distance === null || center === null) return;
-
-    event.preventDefault();
-    const rootRect = $appRoot[0].getBoundingClientRect();
-
-    pinchZoomStartDistance = distance;
-    pinchZoomStartValue = appZoom;
-    pinchZoomLayoutLeft = rootRect.left - appZoomPanX;
-    pinchZoomLayoutTop = rootRect.top - appZoomPanY;
-    pinchZoomContentX = (center.clientX - rootRect.left) / appZoom;
-    pinchZoomContentY = (center.clientY - rootRect.top) / appZoom;
-    isPinchingZoom = true;
-    closeMenus();
-  }, { passive: false });
-
-  document.addEventListener('touchmove', event => {
-    const distance = getTouchDistance(event.touches);
-    const center = getTouchCenter(event.touches);
-
-    if (!isPinchingZoom || distance === null || center === null || !pinchZoomStartDistance) return;
-
-    event.preventDefault();
-    const nextZoom = clampZoom(pinchZoomStartValue * (distance / pinchZoomStartDistance));
-
-    appZoomPanX = center.clientX - pinchZoomLayoutLeft - nextZoom * pinchZoomContentX;
-    appZoomPanY = center.clientY - pinchZoomLayoutTop - nextZoom * pinchZoomContentY;
-
-    setAppZoom(nextZoom, {
-      save: false,
-      immediate: false,
-      round: false
-    });
-  }, { passive: false });
-
-  const finishPinchZoom = () => {
-    if (!isPinchingZoom) return;
-
-    isPinchingZoom = false;
-    pinchZoomStartDistance = null;
-    pinchZoomContentX = 0;
-    pinchZoomContentY = 0;
-    setAppZoom(appZoom, { save: false });
-    saveAppZoom();
-  };
-
-  document.addEventListener('touchend', finishPinchZoom, { passive: true });
-  document.addEventListener('touchcancel', finishPinchZoom, { passive: true });
-
-  startAppZoom();
   initializeData();
 });
