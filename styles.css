@@ -8,6 +8,17 @@
 body { font-family: Arial, sans-serif; margin: 12px; }
 button, input { font: inherit; }
 button { min-height: 40px; }
+#app-root {
+    zoom: var(--app-zoom, 1);
+    touch-action: pan-x pan-y;
+}
+@supports not (zoom: 1) {
+    #app-root {
+        transform: scale(var(--app-zoom, 1));
+        transform-origin: top left;
+        width: calc(100% / var(--app-zoom, 1));
+    }
+}
 table { width: 100%; border-collapse: collapse; margin-top: 10px; }
 th, td { border: 1px solid black; padding: 8px; text-align: left; }
 td { cursor: pointer; }
@@ -131,6 +142,20 @@ th { background-color: #f2f2f2; cursor: default; }
 }
 .controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .button-group { display: flex; gap: 8px; position: relative; }
+.zoom-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.zoom-group button {
+    min-width: 40px;
+    padding: 4px 10px;
+}
+.zoom-value {
+    min-width: 48px;
+    font-weight: 700;
+    text-align: center;
+}
 .search-group { display: flex; align-items: center; gap: 8px; }
 .visible-count {
     min-width: 42px;
@@ -205,6 +230,17 @@ th { background-color: #f2f2f2; cursor: default; }
     }
     .button-group button {
         flex: 1 1 0;
+    }
+    .zoom-group {
+        justify-content: center;
+        width: 100%;
+    }
+    .zoom-group button {
+        flex: 0 0 44px;
+        min-width: 44px;
+    }
+    .zoom-value {
+        min-width: 54px;
     }
     .menu {
         left: 0;

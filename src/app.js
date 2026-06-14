@@ -7,6 +7,10 @@ $(document).ready(() => {
   const ROOT_DATA_PATH = `${DATA_ROOT}/${DATA_FILE_NAME}`;
   const ROOT_EFFECTS_PATH = `${DATA_ROOT}/${EFFECTS_FILE_NAME}`;
   const ROOT_EFFECT_POLARITY_PATH = `${DATA_ROOT}/${EFFECT_POLARITY_FILE_NAME}`;
+  const APP_ZOOM_STORAGE_KEY = 'alchemy-app-zoom';
+  const APP_ZOOM_MIN = 0.5;
+  const APP_ZOOM_MAX = 1.25;
+  const APP_ZOOM_STEP = 0.1;
   const POLARITY = {
     positive: 'positive',
     negative: 'negative',
@@ -77,7 +81,12 @@ $(document).ready(() => {
   let rootPolarityPromise = null;
   let sourceCache = new Map();
   let dataLoadToken = 0;
+  let appZoom = 1;
+  let pinchZoomStartDistance = null;
+  let pinchZoomStartValue = 1;
+  let isPinchingZoom = false;
 
+  const $appRoot = $('#app-root');
   const $addonsBtn = $('#addons-btn');
   const $addonsMenu = $('#addons-menu');
   const $addonsList = $('#addons-list');
@@ -97,11 +106,66 @@ $(document).ready(() => {
   const $effectBackBtn = $('#effect-back-btn');
   const $mainHintRow = $('#main-hint-row');
   const $removeAllBtn = $('#remove-all-btn');
+  const $zoomOutBtn = $('#zoom-out-btn');
+  const $zoomInBtn = $('#zoom-in-btn');
+  const $zoomValue = $('#zoom-value');
 
   const normalizeSearch = value => value.trim().toLowerCase();
   const normalizeAddonKey = value => value.toLowerCase();
   const encodePath = path => path.split('/').map(encodeURIComponent).join('/');
   const compareRu = (a, b) => a.localeCompare(b, 'ru', { sensitivity: 'base' });
+  const isMobileLayout = () => window.matchMedia('(max-width: 700px)').matches;
+  const roundZoom = value => Math.round(value * 100) / 100;
+  const clampZoom = value => Math.min(APP_ZOOM_MAX, Math.max(APP_ZOOM_MIN, value));
+
+  const getDefaultAppZoom = () => (isMobileLayout() ? 0.85 : 1);
+
+  const readStoredAppZoom = () => {
+    try {
+      const storedZoom = Number(window.localStorage.getItem(APP_ZOOM_STORAGE_KEY));
+      return Number.isFinite(storedZoom) ? clampZoom(storedZoom) : getDefaultAppZoom();
+    } catch (error) {
+      return getDefaultAppZoom();
+    }
+  };
+
+  const saveAppZoom = () => {
+    try {
+      window.localStorage.setItem(APP_ZOOM_STORAGE_KEY, String(appZoom));
+    } catch (error) {
+      // Масштаб всё равно работает до перезагрузки, если localStorage недоступен.
+    }
+  };
+
+  const applyAppZoom = () => {
+    $appRoot.css('--app-zoom', appZoom);
+    $zoomValue.text(`${Math.round(appZoom * 100)}%`);
+    $zoomOutBtn.prop('disabled', appZoom <= APP_ZOOM_MIN);
+    $zoomInBtn.prop('disabled', appZoom >= APP_ZOOM_MAX);
+  };
+
+  const setAppZoom = (value, options = {}) => {
+    const { save = true } = options;
+    appZoom = roundZoom(clampZoom(value));
+    applyAppZoom();
+
+    if (save) {
+      saveAppZoom();
+    }
+  };
+
+  const getTouchDistance = touches => {
+    if (touches.length < 2) return null;
+
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const startAppZoom = () => {
+    appZoom = roundZoom(readStoredAppZoom());
+    applyAppZoom();
+  };
 
   const fetchJson = async path => {
     const response = await fetch(encodePath(path));
@@ -1152,6 +1216,14 @@ $(document).ready(() => {
     toggleMenu($addonsBtn, $addonsMenu);
   });
 
+  $zoomOutBtn.on('click', () => {
+    setAppZoom(appZoom - APP_ZOOM_STEP);
+  });
+
+  $zoomInBtn.on('click', () => {
+    setAppZoom(appZoom + APP_ZOOM_STEP);
+  });
+
   $('.menu').on('click', event => {
     event.stopPropagation();
   });
@@ -1224,5 +1296,37 @@ $(document).ready(() => {
     setSelectedEffect($(this).data('effect'));
   });
 
+  document.addEventListener('touchstart', event => {
+    const distance = getTouchDistance(event.touches);
+
+    if (distance === null) return;
+
+    pinchZoomStartDistance = distance;
+    pinchZoomStartValue = appZoom;
+    isPinchingZoom = true;
+    closeMenus();
+  }, { passive: true });
+
+  document.addEventListener('touchmove', event => {
+    const distance = getTouchDistance(event.touches);
+
+    if (!isPinchingZoom || distance === null || !pinchZoomStartDistance) return;
+
+    event.preventDefault();
+    setAppZoom(pinchZoomStartValue * (distance / pinchZoomStartDistance), { save: false });
+  }, { passive: false });
+
+  const finishPinchZoom = () => {
+    if (!isPinchingZoom) return;
+
+    isPinchingZoom = false;
+    pinchZoomStartDistance = null;
+    saveAppZoom();
+  };
+
+  document.addEventListener('touchend', finishPinchZoom, { passive: true });
+  document.addEventListener('touchcancel', finishPinchZoom, { passive: true });
+
+  startAppZoom();
   initializeData();
 });
