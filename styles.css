@@ -45,7 +45,7 @@ th { background-color: #f2f2f2; cursor: default; }
     cursor: default;
 }
 .brew-result-label {
-    background: linear-gradient(90deg, var(--hint-negative-bg) 50%, var(--hint-positive-bg) 50%);
+    background: #fff;
     font-weight: 700;
     cursor: default;
 }
@@ -53,13 +53,16 @@ th { background-color: #f2f2f2; cursor: default; }
     background: #fff;
     cursor: default;
 }
-.hint-positive {
+.brew-result-label.hint-positive,
+.brew-result-effects.hint-positive {
     background-color: var(--hint-positive-bg);
 }
-.hint-negative {
+.brew-result-label.hint-negative,
+.brew-result-effects.hint-negative {
     background-color: var(--hint-negative-bg);
 }
-.hint-mixed {
+.brew-result-label.hint-mixed,
+.brew-result-effects.hint-mixed {
     background: linear-gradient(90deg, var(--hint-negative-bg) 50%, var(--hint-positive-bg) 50%);
 }
 .menu {

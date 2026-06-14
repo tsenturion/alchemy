@@ -385,7 +385,7 @@ $(document).ready(() => {
     const $row = $('<tr>').addClass('brew-result-row');
 
     $('<td>')
-      .addClass('brew-result-label')
+      .addClass(`brew-result-label ${selectedPolarity ? `hint-${selectedPolarity}` : ''}`)
       .text('У вас получится:')
       .appendTo($row);
 
