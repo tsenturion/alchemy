@@ -8,17 +8,13 @@
 - Показывает количество ингредиентов и список имён
 """
 
-import argparse
 import json
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_FILE_NAME = 'data.json'
 EFFECTS_FILE_NAME = 'effects.json'
 POSITIVE_NEGATIVE_FILE_NAME = 'positive_negative_data.json'
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 
 def load_json(path: Path):
@@ -511,53 +507,5 @@ def interactive_menu():
             print(f'Ошибка выполнения задачи: {exc}')
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Универсальный скрипт обслуживания репозитория alchemy.')
-    parser.add_argument('--no-interactive', action='store_true', help='Отключить интерактивное меню и использовать флаги.')
-    parser.add_argument('--maintain-data', action='store_true', help='Выполнить сортировку, заполнение отсутствующего effect_state и обновление effects.json.')
-    parser.add_argument('--verify-datab', action='store_true', help='Проверить покрытие data/datab.json внутри папки data/.')
-    parser.add_argument('--caco-effect-matches', action='store_true', help='Сопоставить эффекты стандартного data.json и CACO по общим ингредиентам.')
-    parser.add_argument('--count', action='store_true', help='Показать количество ингредиентов из data/data.json.')
-    parser.add_argument('--list-names', action='store_true', help='Показать имена ингредиентов из data/data.json.')
-    args = parser.parse_args()
-
-    if len(sys.argv) == 1 or not args.no_interactive:
-        interactive_menu()
-        return
-
-    data_root = ROOT / 'data'
-    report_path = data_root / 'verification_report.json'
-    data_json = data_root / 'data.json'
-    datab_json = data_root / 'datab.json'
-    caco_root = data_root / 'CACO'
-    caco_effect_matches_report = caco_root / 'effect_matches_report.json'
-
-    if args.maintain_data:
-        result = maintain_data(data_root)
-        print_maintenance_report(result)
-
-    if args.verify_datab:
-        if not datab_json.exists():
-            print(f'Предупреждение: файл datab.json не найден: {datab_json}. Проверка пропущена.')
-        else:
-            report = verify_datab(datab_json, data_root, report_path)
-            print(f'Отчёт проверки записан в {report_path}')
-            print(f"Найдено: {report['present_count']}, отсутствует: {report['missing_count']}")
-
-    if args.caco_effect_matches:
-        report = save_caco_effect_matches(data_json, caco_root / 'data.json', caco_effect_matches_report)
-        print(f'Отчёт записан в {caco_effect_matches_report.relative_to(ROOT)}')
-        print(f'Общих ингредиентов: {report["общих_ингредиентов"]}')
-        print(f'Точных совпадений: {len(report["точные_совпадения"])}')
-        print(f'Вероятных совпадений: {len(report["вероятные_совпадения"])}')
-        print(f'Требуют ручной проверки: {len(report["нужно_проверить_вручную"])}')
-
-    if args.count:
-        print_data_count(data_json)
-
-    if args.list_names:
-        print_ingredient_names(data_json)
-
-
 if __name__ == '__main__':
-    main()
+    interactive_menu()
