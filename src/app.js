@@ -112,6 +112,17 @@ $(document).ready(() => {
   const normalizeAddonKey = value => value.toLowerCase();
   const encodePath = path => path.split('/').map(encodeURIComponent).join('/');
   const compareRu = (a, b) => a.localeCompare(b, 'ru', { sensitivity: 'base' });
+  const compareEffectLists = (leftEffects, rightEffects) => {
+    const maxLength = Math.max(leftEffects.length, rightEffects.length);
+
+    for (let index = 0; index < maxLength; index += 1) {
+      const result = compareRu(leftEffects[index] || '', rightEffects[index] || '');
+
+      if (result) return result;
+    }
+
+    return 0;
+  };
 
   const fetchJson = async path => {
     const response = await fetch(encodePath(path));
@@ -653,19 +664,22 @@ $(document).ready(() => {
       .map((ingredient, index) => ({
         ingredient,
         index,
-        oppositeMatchCount: ingredient.effects.filter(effect => oppositeMatchedEffects.has(effect)).length
+        oppositeMatchCount: ingredient.effects.filter(effect => oppositeMatchedEffects.has(effect)).length,
+        effects: selectedEffects.length
+          ? orderSelectedEffectTableEffects(ingredient.effects)
+          : ingredient.effects
       }))
       .sort((left, right) => {
-        if (!selectedEffects.length || !oppositeMatchedEffects.size) return left.index - right.index;
+        if (!selectedEffects.length) return left.index - right.index;
 
-        return Number(left.oppositeMatchCount > 0) - Number(right.oppositeMatchCount > 0)
-          || left.index - right.index;
+        return (oppositeMatchedEffects.size
+          ? Number(left.oppositeMatchCount > 0) - Number(right.oppositeMatchCount > 0)
+          : 0)
+          || compareEffectLists(left.effects, right.effects)
+          || compareRu(left.ingredient.name, right.ingredient.name);
       });
 
-    displayIngredients.forEach(({ ingredient, oppositeMatchCount }) => {
-      const effects = selectedEffects.length
-        ? orderSelectedEffectTableEffects(ingredient.effects)
-        : ingredient.effects;
+    displayIngredients.forEach(({ ingredient, oppositeMatchCount, effects }) => {
       const highlightedEffects = selectedEffects.length && oppositeMatchCount > 0
         ? new Set(ingredient.effects.filter(effect => oppositeMatchedEffects.has(effect)))
         : new Set();
@@ -784,9 +798,12 @@ $(document).ready(() => {
         const rightMatchedEffects = getMatchedEffects(rightIngredient);
         const leftPriority = getMatchPriority(leftMatchedEffects);
         const rightPriority = getMatchPriority(rightMatchedEffects);
+        const leftEffects = orderCombinationEffects(leftIngredient.effects, effectsToShow, effectPriority);
+        const rightEffects = orderCombinationEffects(rightIngredient.effects, effectsToShow, effectPriority);
 
         return rightMatchedEffects.length - leftMatchedEffects.length
           || leftPriority - rightPriority
+          || compareEffectLists(leftEffects, rightEffects)
           || compareRu(leftName, rightName);
       });
 
