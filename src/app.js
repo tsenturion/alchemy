@@ -123,6 +123,21 @@ $(document).ready(() => {
 
     return 0;
   };
+  const getSortableEffectsByPolarity = (effects, polarity) => {
+    if (polarity === POLARITY.positive) {
+      return effects.filter(effect => !negativeEffects.has(effect));
+    }
+
+    if (polarity === POLARITY.negative) {
+      return effects.filter(effect => !positiveEffects.has(effect));
+    }
+
+    return effects;
+  };
+  const compareEffectListsByPolarity = (leftEffects, rightEffects, polarity) => compareEffectLists(
+    getSortableEffectsByPolarity(leftEffects, polarity),
+    getSortableEffectsByPolarity(rightEffects, polarity)
+  );
 
   const fetchJson = async path => {
     const response = await fetch(encodePath(path));
@@ -693,7 +708,7 @@ $(document).ready(() => {
         return (oppositeMatchedEffects.size
           ? Number(left.oppositeMatchCount > 0) - Number(right.oppositeMatchCount > 0)
           : 0)
-          || compareEffectLists(left.effects, right.effects)
+          || compareEffectListsByPolarity(left.effects, right.effects, getEffectClass(selectedEffect))
           || compareRu(left.ingredient.name, right.ingredient.name);
       });
 
@@ -821,7 +836,7 @@ $(document).ready(() => {
 
         return rightMatchedEffects.length - leftMatchedEffects.length
           || leftPriority - rightPriority
-          || compareEffectLists(leftEffects, rightEffects)
+          || compareEffectListsByPolarity(leftEffects, rightEffects, selectedPolarity)
           || compareRu(leftName, rightName);
       });
 
