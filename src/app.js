@@ -466,6 +466,28 @@ $(document).ready(() => {
     return 2;
   });
 
+  const orderSelectedEffectTableEffects = effects => {
+    if (!selectedEffect) return effects;
+
+    const selectedEffectPolarity = getEffectClass(selectedEffect);
+    const otherEffects = effects.filter(effect => effect !== selectedEffect);
+
+    if (!selectedEffectPolarity) {
+      return [selectedEffect, ...otherEffects];
+    }
+
+    const oppositePolarity = getOppositePolarity(selectedEffectPolarity);
+
+    return [
+      selectedEffect,
+      ...orderEffectsByPriority(otherEffects, effect => {
+        if (getEffectMatchesPolarity(effect, selectedEffectPolarity)) return 0;
+        if (oppositePolarity && getEffectMatchesPolarity(effect, oppositePolarity)) return 2;
+        return 1;
+      })
+    ];
+  };
+
   const orderBrewResultEffects = effects => {
     if (!selectedPolarity) return effects;
 
@@ -567,12 +589,24 @@ $(document).ready(() => {
       .map(name => ingredientByName.get(name))
       .filter(Boolean);
     const oppositeMatchedEffects = getOppositeMatchedEffects(selectedIngredients);
+    const displayIngredients = visibleIngredients
+      .map((ingredient, index) => ({
+        ingredient,
+        index,
+        oppositeMatchCount: ingredient.effects.filter(effect => oppositeMatchedEffects.has(effect)).length
+      }))
+      .sort((left, right) => {
+        if (!selectedEffect || !oppositeMatchedEffects.size) return left.index - right.index;
 
-    visibleIngredients.forEach(ingredient => {
+        return Number(left.oppositeMatchCount > 0) - Number(right.oppositeMatchCount > 0)
+          || left.index - right.index;
+      });
+
+    displayIngredients.forEach(({ ingredient, oppositeMatchCount }) => {
       const effects = selectedEffect
-        ? [selectedEffect, ...ingredient.effects.filter(effect => effect !== selectedEffect)]
+        ? orderSelectedEffectTableEffects(ingredient.effects)
         : ingredient.effects;
-      const highlightedEffects = selectedEffect
+      const highlightedEffects = selectedEffect && oppositeMatchCount > 0
         ? new Set(ingredient.effects.filter(effect => oppositeMatchedEffects.has(effect)))
         : new Set();
 
@@ -683,7 +717,6 @@ $(document).ready(() => {
         const leftIngredient = ingredientByName.get(leftName);
         const rightIngredient = ingredientByName.get(rightName);
         const getMatchedEffects = ingredient => ingredient.effects.filter(effect => effectsToShow.has(effect));
-        const getMultiMatchPriority = matchedEffects => (matchedEffects.length > 1 ? 0 : 1);
         const getMatchPriority = matchedEffects => Math.min(
           ...matchedEffects.map(effect => effectPriority.get(effect) ?? Number.POSITIVE_INFINITY)
         );
@@ -692,7 +725,7 @@ $(document).ready(() => {
         const leftPriority = getMatchPriority(leftMatchedEffects);
         const rightPriority = getMatchPriority(rightMatchedEffects);
 
-        return getMultiMatchPriority(leftMatchedEffects) - getMultiMatchPriority(rightMatchedEffects)
+        return rightMatchedEffects.length - leftMatchedEffects.length
           || leftPriority - rightPriority
           || compareRu(leftName, rightName);
       });
@@ -705,7 +738,8 @@ $(document).ready(() => {
 
       createIngredientRow(ingredient, {
         effects: orderCombinationEffects(ingredient.effects, effectsToShow),
-        highlightedEffects: matchedEffects.size > 1 ? matchedEffects : new Set()
+        highlightedEffects: matchedEffects.size > 1 ? matchedEffects : new Set(),
+        isEffectClickable: true
       }).appendTo(fragment);
     });
 
@@ -1315,6 +1349,10 @@ $(document).ready(() => {
 
   $combinationTableBody.on('click', 'td:first-child', function (event) {
     addIngredient($(this).data('name'), event);
+  });
+
+  $combinationTableBody.on('click', '.effect-cell', function () {
+    setSelectedEffectAndScroll($(this).data('effect'));
   });
 
   $selectionTableBody.on('click', '.remove-btn', function () {
