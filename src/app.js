@@ -682,15 +682,19 @@ $(document).ready(() => {
       .sort((leftName, rightName) => {
         const leftIngredient = ingredientByName.get(leftName);
         const rightIngredient = ingredientByName.get(rightName);
-        const getMatchPriority = ingredient => Math.min(
-          ...ingredient.effects
-            .filter(effect => effectsToShow.has(effect))
-            .map(effect => effectPriority.get(effect) ?? Number.POSITIVE_INFINITY)
+        const getMatchedEffects = ingredient => ingredient.effects.filter(effect => effectsToShow.has(effect));
+        const getMultiMatchPriority = matchedEffects => (matchedEffects.length > 1 ? 0 : 1);
+        const getMatchPriority = matchedEffects => Math.min(
+          ...matchedEffects.map(effect => effectPriority.get(effect) ?? Number.POSITIVE_INFINITY)
         );
-        const leftPriority = getMatchPriority(leftIngredient);
-        const rightPriority = getMatchPriority(rightIngredient);
+        const leftMatchedEffects = getMatchedEffects(leftIngredient);
+        const rightMatchedEffects = getMatchedEffects(rightIngredient);
+        const leftPriority = getMatchPriority(leftMatchedEffects);
+        const rightPriority = getMatchPriority(rightMatchedEffects);
 
-        return leftPriority - rightPriority || compareRu(leftName, rightName);
+        return getMultiMatchPriority(leftMatchedEffects) - getMultiMatchPriority(rightMatchedEffects)
+          || leftPriority - rightPriority
+          || compareRu(leftName, rightName);
       });
 
     const fragment = document.createDocumentFragment();
