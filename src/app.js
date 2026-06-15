@@ -590,16 +590,23 @@ $(document).ready(() => {
 
     const effectsToShow = new Set();
     const effectsToExclude = new Set();
+    const effectPriority = new Map();
 
     selectedIngredients.forEach(ingredient => {
       ingredient.effects.forEach(effect => {
         if (selectedPolarity === POLARITY.positive && positiveEffects.has(effect)) {
           effectsToShow.add(effect);
+          if (!effectPriority.has(effect)) {
+            effectPriority.set(effect, effectPriority.size);
+          }
           return;
         }
 
         if (selectedPolarity === POLARITY.negative && negativeEffects.has(effect)) {
           effectsToShow.add(effect);
+          if (!effectPriority.has(effect)) {
+            effectPriority.set(effect, effectPriority.size);
+          }
           return;
         }
 
@@ -622,7 +629,19 @@ $(document).ready(() => {
         const ingredient = ingredientByName.get(name);
         return ingredient && !ingredient.effects.some(effect => effectsToExclude.has(effect));
       })
-      .sort(compareRu);
+      .sort((leftName, rightName) => {
+        const leftIngredient = ingredientByName.get(leftName);
+        const rightIngredient = ingredientByName.get(rightName);
+        const getMatchPriority = ingredient => Math.min(
+          ...ingredient.effects
+            .filter(effect => effectsToShow.has(effect))
+            .map(effect => effectPriority.get(effect) ?? Number.POSITIVE_INFINITY)
+        );
+        const leftPriority = getMatchPriority(leftIngredient);
+        const rightPriority = getMatchPriority(rightIngredient);
+
+        return leftPriority - rightPriority || compareRu(leftName, rightName);
+      });
 
     const fragment = document.createDocumentFragment();
 
