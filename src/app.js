@@ -1,5 +1,6 @@
 $(document).ready(() => {
   const MAX_SELECTION_COUNT = 3;
+  const MAX_EFFECT_FILTER_COUNT = 4;
   const DATA_ROOT = 'data';
   const DATA_FILE_NAME = 'data.json';
   const EFFECTS_FILE_NAME = 'effects.json';
@@ -18,6 +19,10 @@ $(document).ready(() => {
     loading: 'loading',
     loaded: 'loaded',
     error: 'error'
+  };
+  const EFFECT_MENU_MODE = {
+    replace: 'replace',
+    add: 'add'
   };
   const ADDON_DISPLAY_NAMES = new Map(Object.entries({
     '_ResoursePack': 'Листья алоэ',
@@ -67,7 +72,9 @@ $(document).ready(() => {
   let selectedClasses = new Map();
   let searchQuery = '';
   let selectedEffect = null;
+  let selectedEffects = [];
   let selectedPolarity = null;
+  let effectMenuMode = EFFECT_MENU_MODE.replace;
   let availableAddons = [];
   let selectedAddonIds = new Set();
   let addonIngredientCounts = new Map();
@@ -97,6 +104,8 @@ $(document).ready(() => {
   const $effectTitleText = $('#effect-title-text');
   const $effectBackBtn = $('#effect-back-btn');
   const $mainHintRow = $('#main-hint-row');
+  const $mainHintEffectBtn = $('#main-hint-effect-btn');
+  const $effectHeaderButtons = $('#data-table thead tr:first-child .effect-header-button');
   const $removeAllBtn = $('#remove-all-btn');
 
   const normalizeSearch = value => value.trim().toLowerCase();
@@ -427,7 +436,7 @@ $(document).ready(() => {
   const getOppositeMatchedEffects = selectedIngredients => {
     const oppositePolarity = getOppositePolarity(selectedPolarity);
 
-    if (!selectedEffect || !oppositePolarity || !selectedIngredients.length) {
+    if (!selectedEffects.length || !oppositePolarity || !selectedIngredients.length) {
       return new Set();
     }
 
@@ -479,19 +488,21 @@ $(document).ready(() => {
     .map(item => item.effect);
 
   const orderSelectedEffectTableEffects = effects => {
-    if (!selectedEffect) return effects;
+    if (!selectedEffects.length) return effects;
 
     const selectedEffectPolarity = getEffectClass(selectedEffect);
-    const otherEffects = effects.filter(effect => effect !== selectedEffect);
+    const selectedEffectSet = new Set(selectedEffects);
+    const selectedEffectsInRow = selectedEffects.filter(effect => effects.includes(effect));
+    const otherEffects = effects.filter(effect => !selectedEffectSet.has(effect));
 
     if (!selectedEffectPolarity) {
-      return [selectedEffect, ...otherEffects];
+      return [...selectedEffectsInRow, ...otherEffects];
     }
 
     const oppositePolarity = getOppositePolarity(selectedEffectPolarity);
 
     return [
-      selectedEffect,
+      ...selectedEffectsInRow,
       ...orderEffectsByPriority(otherEffects, effect => {
         if (getEffectMatchesPolarity(effect, selectedEffectPolarity)) return 0;
         if (oppositePolarity && getEffectMatchesPolarity(effect, oppositePolarity)) return 2;
@@ -556,16 +567,34 @@ $(document).ready(() => {
 
   const getVisibleIngredients = () => ingredients.filter(ingredient => {
     if (selectedNames.has(ingredient.name)) return false;
-    if (selectedEffect && !ingredient.effects.includes(selectedEffect)) return false;
+    if (selectedEffects.length && !selectedEffects.every(effect => ingredient.effects.includes(effect))) return false;
     if (searchQuery && !ingredient.name.toLowerCase().includes(searchQuery)) return false;
     return true;
   });
 
+  const updateEffectHeaderControls = () => {
+    $effectHeaderButtons.each(function () {
+      const $button = $(this);
+      const slot = Number($button.data('effectSlot'));
+      const isFirstSlot = slot === 0;
+      const isNextSlot = selectedEffects.length > 0 && slot === selectedEffects.length;
+      const canAddEffect = isNextSlot && selectedEffects.length < MAX_EFFECT_FILTER_COUNT;
+
+      $button
+        .prop('disabled', !isFirstSlot && !canAddEffect)
+        .toggleClass('effect-header-button-add', canAddEffect)
+        .text(canAddEffect ? `+ Эффект ${slot + 1}` : `Эффект ${slot + 1}`);
+    });
+  };
+
   const updateFilterControls = () => {
-    $backBtn.toggle(Boolean(selectedEffect));
-    $effectTitleText.text(selectedEffect || '');
-    $effectTitle.css('display', selectedEffect ? 'flex' : 'none');
-    $mainHintRow.toggle(!selectedEffect || selectedNames.size === 0);
+    const hasSelectedEffects = selectedEffects.length > 0;
+
+    $backBtn.toggle(hasSelectedEffects);
+    $effectTitleText.text(selectedEffects.join(' / '));
+    $effectTitle.css('display', hasSelectedEffects ? 'flex' : 'none');
+    $mainHintRow.toggle(!hasSelectedEffects || selectedNames.size === 0);
+    updateEffectHeaderControls();
   };
 
   const renderEffectsMenu = () => {
@@ -587,11 +616,13 @@ $(document).ready(() => {
         .attr('type', 'button')
         .addClass('effect-btn')
         .addClass(getEffectClass(effect))
+        .data('effect', effect)
         .text(effect)
         .appendTo(fragment);
     });
 
     $effectsMenu.empty().append(fragment);
+    updateEffectsMenuButtons();
   };
 
   const renderTable = () => {
@@ -608,17 +639,17 @@ $(document).ready(() => {
         oppositeMatchCount: ingredient.effects.filter(effect => oppositeMatchedEffects.has(effect)).length
       }))
       .sort((left, right) => {
-        if (!selectedEffect || !oppositeMatchedEffects.size) return left.index - right.index;
+        if (!selectedEffects.length || !oppositeMatchedEffects.size) return left.index - right.index;
 
         return Number(left.oppositeMatchCount > 0) - Number(right.oppositeMatchCount > 0)
           || left.index - right.index;
       });
 
     displayIngredients.forEach(({ ingredient, oppositeMatchCount }) => {
-      const effects = selectedEffect
+      const effects = selectedEffects.length
         ? orderSelectedEffectTableEffects(ingredient.effects)
         : ingredient.effects;
-      const highlightedEffects = selectedEffect && oppositeMatchCount > 0
+      const highlightedEffects = selectedEffects.length && oppositeMatchCount > 0
         ? new Set(ingredient.effects.filter(effect => oppositeMatchedEffects.has(effect)))
         : new Set();
 
@@ -823,9 +854,30 @@ $(document).ready(() => {
     renderAllTables();
   };
 
-  const setSelectedEffect = effect => {
-    selectedEffect = effect;
+  const syncSelectedEffect = () => {
+    selectedEffect = selectedEffects[0] || null;
+  };
+
+  const setSelectedEffects = effects => {
+    const uniqueEffects = [];
+
+    effects.forEach(effect => {
+      if (effect && namesByEffect.has(effect) && !uniqueEffects.includes(effect)) {
+        uniqueEffects.push(effect);
+      }
+    });
+
+    selectedEffects = uniqueEffects.slice(0, MAX_EFFECT_FILTER_COUNT);
+    syncSelectedEffect();
     renderTable();
+  };
+
+  const setSelectedEffect = effect => {
+    setSelectedEffects([effect]);
+  };
+
+  const addSelectedEffect = effect => {
+    setSelectedEffects([...selectedEffects, effect]);
   };
 
   const scrollToEffectTable = () => {
@@ -843,7 +895,8 @@ $(document).ready(() => {
   };
 
   const clearSelectedEffect = () => {
-    selectedEffect = null;
+    selectedEffects = [];
+    syncSelectedEffect();
     searchQuery = '';
     $search.val('');
     renderTable();
@@ -1158,9 +1211,8 @@ $(document).ready(() => {
       selectedPolarity = null;
     }
 
-    if (selectedEffect && !namesByEffect.has(selectedEffect)) {
-      selectedEffect = null;
-    }
+    selectedEffects = selectedEffects.filter(effect => namesByEffect.has(effect));
+    syncSelectedEffect();
   };
 
   const getRootAddonCountLabel = () => {
@@ -1289,9 +1341,34 @@ $(document).ready(() => {
     $menu.css('left', isMobile ? 0 : $button.position().left);
   };
 
+  const updateEffectsMenuButtons = () => {
+    const query = normalizeSearch($effectsMenu.find('.effect-search').val() || '');
+
+    $effectsMenu.find('.effect-btn').each(function () {
+      const effect = $(this).data('effect');
+      const matchesSearch = normalizeSearch(effect).includes(query);
+      const canUseEffect = effectMenuMode !== EFFECT_MENU_MODE.add || !selectedEffects.includes(effect);
+
+      $(this).toggle(matchesSearch && canUseEffect);
+    });
+  };
+
   const closeMenus = () => {
     $effectsMenu.hide();
     $addonsMenu.hide();
+  };
+
+  const showEffectsMenu = (mode = EFFECT_MENU_MODE.replace, canToggle = false) => {
+    const shouldShow = canToggle ? !$effectsMenu.is(':visible') || effectMenuMode !== mode : true;
+
+    closeMenus();
+
+    if (!shouldShow) return;
+
+    effectMenuMode = mode;
+    positionMenu($('#menu-btn'), $effectsMenu);
+    updateEffectsMenuButtons();
+    $effectsMenu.show();
   };
 
   const toggleMenu = ($button, $menu) => {
@@ -1310,7 +1387,7 @@ $(document).ready(() => {
 
   $('#menu-btn').on('click', event => {
     event.stopPropagation();
-    toggleMenu($('#menu-btn'), $effectsMenu);
+    showEffectsMenu(EFFECT_MENU_MODE.replace, true);
   });
 
   $addonsBtn.on('click', event => {
@@ -1327,6 +1404,29 @@ $(document).ready(() => {
   $(document).on('keydown', event => {
     if (event.key === 'Escape') {
       closeMenus();
+    }
+  });
+
+  $mainHintEffectBtn.on('click', event => {
+    event.stopPropagation();
+    showEffectsMenu(EFFECT_MENU_MODE.replace);
+  });
+
+  $effectHeaderButtons.on('click', function (event) {
+    const slot = Number($(this).data('effectSlot'));
+    const canAddEffect = selectedEffects.length > 0
+      && slot === selectedEffects.length
+      && selectedEffects.length < MAX_EFFECT_FILTER_COUNT;
+
+    event.stopPropagation();
+
+    if (slot === 0) {
+      showEffectsMenu(EFFECT_MENU_MODE.replace);
+      return;
+    }
+
+    if (canAddEffect) {
+      showEffectsMenu(EFFECT_MENU_MODE.add);
     }
   });
 
@@ -1378,16 +1478,19 @@ $(document).ready(() => {
   $removeAllBtn.on('click', clearSelection);
 
   $effectsMenu.on('click', '.effect-btn', function () {
-    setSelectedEffect($(this).text());
+    const effect = $(this).data('effect');
+
+    if (effectMenuMode === EFFECT_MENU_MODE.add) {
+      addSelectedEffect(effect);
+    } else {
+      setSelectedEffect(effect);
+    }
+
     closeMenus();
   });
 
   $effectsMenu.on('input', '.effect-search', function () {
-    const query = normalizeSearch($(this).val());
-
-    $effectsMenu.find('.effect-btn').each(function () {
-      $(this).toggle(normalizeSearch($(this).text()).includes(query));
-    });
+    updateEffectsMenuButtons();
   });
 
   $dataTableBody.on('click', '.effect-cell', function () {

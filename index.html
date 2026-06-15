@@ -65,10 +65,10 @@
         <thead>
             <tr>
                 <th>Название</th>
-                <th>Эффект 1</th>
-                <th>Эффект 2</th>
-                <th>Эффект 3</th>
-                <th>Эффект 4</th>
+                <th data-effect-slot="0"><button class="effect-header-button" type="button" data-effect-slot="0">Эффект 1</button></th>
+                <th data-effect-slot="1"><button class="effect-header-button" type="button" data-effect-slot="1" disabled>Эффект 2</button></th>
+                <th data-effect-slot="2"><button class="effect-header-button" type="button" data-effect-slot="2" disabled>Эффект 3</button></th>
+                <th data-effect-slot="3"><button class="effect-header-button" type="button" data-effect-slot="3" disabled>Эффект 4</button></th>
             </tr>
             <tr id="main-hint-row">
                 <th class="brew-hint-cell">
@@ -77,7 +77,9 @@
                         <span class="brew-hint-potion">Для варки зелья</span>
                     </div>
                 </th>
-                <th class="main-hint-effects" colspan="4">Выберите эффект чтобы посмотреть все ингридиенты</th>
+                <th class="main-hint-effects" colspan="4">
+                    <button id="main-hint-effect-btn" class="main-hint-effect-button" type="button">Выберите эффект чтобы посмотреть все ингридиенты</button>
+                </th>
             </tr>
         </thead>
         <tbody></tbody>
