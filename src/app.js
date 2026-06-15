@@ -1,902 +1,32 @@
 $(document).ready(() => {
-  const MAX_SELECTION_COUNT = 3;
-  const MAX_EFFECT_FILTER_COUNT = 4;
-  const DATA_ROOT = 'data';
-  const DATA_FILE_NAME = 'data.json';
-  const EFFECTS_FILE_NAME = 'effects.json';
-  const EFFECT_POLARITY_FILE_NAME = 'positive_negative_data.json';
-  const EFFECT_TRANSLATIONS_FILE_NAME = 'effect_translations.json';
-  const ROOT_DATA_PATH = `${DATA_ROOT}/${DATA_FILE_NAME}`;
-  const ROOT_EFFECTS_PATH = `${DATA_ROOT}/${EFFECTS_FILE_NAME}`;
-  const ROOT_EFFECT_POLARITY_PATH = `${DATA_ROOT}/${EFFECT_POLARITY_FILE_NAME}`;
-  const POLARITY = {
-    positive: 'positive',
-    negative: 'negative',
-    mixed: 'mixed'
-  };
-  const SOURCE_STATUS = {
-    idle: 'idle',
-    loading: 'loading',
-    loaded: 'loaded',
-    error: 'error'
-  };
-  const EFFECT_MENU_MODE = {
-    replace: 'replace',
-    add: 'add'
-  };
-  const ADDON_DISPLAY_NAMES = new Map(Object.entries({
-    '_ResoursePack': 'Листья алоэ',
-    'ccBGSSSE001-Fish': 'Рыбалка',
-    'ccbgssse003-zombies': 'Чума мертвецов',
-    'ccBGSSSE025-AdvDSGS': 'Святые и Соблазнители',
-    'ccbgssse037-curios': 'Редкие диковинки',
-    'ccbgssse040-advobgobs': 'Гоблины',
-    'ccbgssse067-daedinv': 'Причина (The Cause)',
-    'cckrtsee001_altar': 'Горькая чаша',
-    'cctwbsee001-puzzledungeon': 'Забытые времена года',
-    CACO: 'CACO',
-    Dawnguard: 'Стража Рассвета (Dawnguard)',
-    Dragonborn: 'Драконорожденный (Dragonborn)',
-    Hearthfire: 'Домашний очаг (Hearthfire)'
-  }).map(([folderName, displayName]) => [folderName.toLowerCase(), displayName]));
-  const DEFAULT_ENABLED_ADDON_FOLDERS = new Set([
-    '_ResoursePack',
-    'ccbgssse003-zombies',
-    'ccbgssse040-advobgobs',
-    'cckrtsee001_altar',
-    'cctwbsee001-puzzledungeon'
-  ].map(folderName => folderName.toLowerCase()));
-  const FALLBACK_ADDON_DATA_PATHS = [
-    'data/CACO/data.json',
-    'data/Creation Club/_ResoursePack/data.json',
-    'data/Creation Club/ccBGSSSE001-Fish/data.json',
-    'data/Creation Club/ccbgssse003-zombies/data.json',
-    'data/Creation Club/ccBGSSSE025-AdvDSGS/data.json',
-    'data/Creation Club/ccbgssse037-curios/data.json',
-    'data/Creation Club/ccbgssse040-advobgobs/data.json',
-    'data/Creation Club/ccbgssse067-daedinv/data.json',
-    'data/Creation Club/cckrtsee001_altar/data.json',
-    'data/Creation Club/cctwbsee001-puzzledungeon/data.json',
-    'data/DLC/Dawnguard/data.json',
-    'data/DLC/Dragonborn/data.json',
-    'data/DLC/Hearthfire/data.json',
-    'data/Skyrim Extended Cut - Saints and Seducers/data.json'
-  ];
-
-  let ingredients = [];
-  let ingredientByName = new Map();
-  let namesByEffect = new Map();
-  let positiveEffects = new Set();
-  let negativeEffects = new Set();
-  let selectedNames = new Set();
-  let selectedClasses = new Map();
-  let searchQuery = '';
-  let selectedEffect = null;
-  let selectedEffects = [];
-  let selectedPolarity = null;
-  let effectMenuMode = EFFECT_MENU_MODE.replace;
-  let availableAddons = [];
-  let selectedAddonIds = new Set();
-  let addonIngredientCounts = new Map();
-  let rootDataEnabled = true;
-  let rootIngredientCount = null;
-  let rootPolarityData = null;
-  let rootPolarityStatus = SOURCE_STATUS.idle;
-  let rootPolarityPromise = null;
-  let sourceCache = new Map();
-  let dataLoadToken = 0;
-
-  const $addonsBtn = $('#addons-btn');
-  const $addonsMenu = $('#addons-menu');
-  const $addonsList = $('#addons-list');
-  const $effectsMenu = $('#effects-menu');
-  const $dataTableBody = $('#data-table tbody');
-  const $selectionTableBody = $('#selection-table tbody');
-  const $combinationTableBody = $('#combination-table tbody');
-  const $search = $('#search');
-  const $visibleCount = $('#visible-count');
-  const $backBtn = $('#back-btn');
-  const $selectionTable = $('#selection-table');
-  const $combinationTable = $('#combination-table');
-  const $selectionTitle = $('#selection-title');
-  const $combinationTitle = $('#combination-title');
-  const $effectTitle = $('#effect-title');
-  const $effectTitleText = $('#effect-title-text');
-  const $effectBackBtn = $('#effect-back-btn');
-  const $mainHintRow = $('#main-hint-row');
-  const $mainHintEffectBtn = $('#main-hint-effect-btn');
-  const $effectHeaderButtons = $('#data-table thead tr:first-child .effect-header-button');
-  const $removeAllBtn = $('#remove-all-btn');
-
-  const normalizeSearch = value => value.trim().toLowerCase();
-  const normalizeAddonKey = value => value.toLowerCase();
-  const encodePath = path => path.split('/').map(encodeURIComponent).join('/');
-  const compareRu = (a, b) => a.localeCompare(b, 'ru', { sensitivity: 'base' });
-  const compareEffectLists = (leftEffects, rightEffects) => {
-    const maxLength = Math.max(leftEffects.length, rightEffects.length);
-
-    for (let index = 0; index < maxLength; index += 1) {
-      const result = compareRu(leftEffects[index] || '', rightEffects[index] || '');
-
-      if (result) return result;
-    }
-
-    return 0;
-  };
-  const getSortableEffectsByPolarity = (effects, polarity) => {
-    if (polarity === POLARITY.positive) {
-      return effects.filter(effect => !negativeEffects.has(effect));
-    }
-
-    if (polarity === POLARITY.negative) {
-      return effects.filter(effect => !positiveEffects.has(effect));
-    }
-
-    return effects;
-  };
-  const compareEffectListsByPolarity = (leftEffects, rightEffects, polarity) => compareEffectLists(
-    getSortableEffectsByPolarity(leftEffects, polarity),
-    getSortableEffectsByPolarity(rightEffects, polarity)
-  );
-
-  const fetchJson = async path => {
-    const response = await fetch(encodePath(path));
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${path}`);
-    }
-
-    return response.json();
-  };
-
-  const fetchOptionalJson = async path => {
-    try {
-      const response = await fetch(encodePath(path));
-
-      if (!response.ok) return null;
-      return response.json();
-    } catch (error) {
-      console.warn(`Не удалось загрузить необязательный файл ${path}`, error);
-      return null;
-    }
-  };
-
-  const uniqueSortedPaths = paths => Array.from(new Set(paths))
-    .filter(path => path && path !== ROOT_DATA_PATH)
-    .sort(compareRu);
-
-  const getFolderNameFromDataPath = dataPath => {
-    const parts = dataPath.split('/');
-    return parts.length >= 2 ? parts[parts.length - 2] : '';
-  };
-
-  const getDirectoryPathFromDataPath = dataPath => dataPath.replace(/\/data\.json$/i, '');
-  const getEffectsPath = dataPath => dataPath.replace(/data\.json$/i, EFFECTS_FILE_NAME);
-  const getEffectPolarityPath = dataPath => dataPath.replace(/data\.json$/i, EFFECT_POLARITY_FILE_NAME);
-  const getEffectTranslationsPath = dataPath => dataPath.replace(/data\.json$/i, EFFECT_TRANSLATIONS_FILE_NAME);
-
-  const createAddonDefinitions = dataPaths => uniqueSortedPaths(dataPaths)
-    .map(dataPath => {
-      const directoryPath = getDirectoryPathFromDataPath(dataPath);
-      const folderName = getFolderNameFromDataPath(dataPath);
-      const normalizedFolderName = normalizeAddonKey(folderName);
-      const defaultEnabled = DEFAULT_ENABLED_ADDON_FOLDERS.has(normalizedFolderName);
-
-      return {
-        id: directoryPath,
-        dataPath,
-        effectsPath: getEffectsPath(dataPath),
-        polarityPath: getEffectPolarityPath(dataPath),
-        translationsPath: getEffectTranslationsPath(dataPath),
-        folderName,
-        name: ADDON_DISPLAY_NAMES.get(normalizedFolderName) || folderName,
-        defaultEnabled,
-        selectable: !defaultEnabled
-      };
-    })
-    .sort((a, b) => compareRu(a.name, b.name) || compareRu(a.id, b.id));
-
-  const getGitHubPagesRepo = () => {
-    const match = window.location.hostname.match(/^([^.]+)\.github\.io$/i);
-    const configuredRepository = $('meta[name="github-repository"]').attr('content') || '';
-
-    if (match) {
-      const owner = match[1];
-      const pathSegments = window.location.pathname.split('/').filter(Boolean);
-      const firstSegment = pathSegments[0] || '';
-      const repo = firstSegment && !firstSegment.endsWith('.html')
-        ? firstSegment
-        : `${owner}.github.io`;
-
-      return { owner, repo };
-    }
-
-    const [owner, repo] = configuredRepository.split('/');
-    return owner && repo ? { owner, repo } : null;
-  };
-
-  const listGitHubDirectory = async (repoInfo, directoryPath) => {
-    const response = await fetch(
-      `https://api.github.com/repos/${repoInfo.owner}/${repoInfo.repo}/contents/${encodePath(directoryPath)}`
-    );
-
-    if (!response.ok) {
-      throw new Error(`GitHub API ${response.status}: ${directoryPath}`);
-    }
-
-    const entries = await response.json();
-    return Array.isArray(entries) ? entries : [];
-  };
-
-  const walkGitHubDataDirectory = async (repoInfo, directoryPath = DATA_ROOT) => {
-    const entries = await listGitHubDirectory(repoInfo, directoryPath);
-    const dataPaths = [];
-
-    if (
-      directoryPath !== DATA_ROOT &&
-      entries.some(entry => entry.type === 'file' && entry.name === DATA_FILE_NAME)
-    ) {
-      dataPaths.push(`${directoryPath}/${DATA_FILE_NAME}`);
-    }
-
-    const childPaths = await Promise.all(
-      entries
-        .filter(entry => entry.type === 'dir')
-        .map(entry => walkGitHubDataDirectory(repoInfo, entry.path))
-    );
-
-    return dataPaths.concat(...childPaths);
-  };
-
-  const discoverGitHubPagesDataPaths = async () => {
-    const repoInfo = getGitHubPagesRepo();
-    if (!repoInfo) return [];
-    return walkGitHubDataDirectory(repoInfo);
-  };
-
-  const isLocalHost = () => ['', 'localhost', '127.0.0.1'].includes(window.location.hostname);
-
-  const getDirectoryListingEntries = (html, directoryPath) => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const directoryUrl = new URL(`${directoryPath}/`, window.location.href);
-    const dataRootUrl = new URL(`${DATA_ROOT}/`, window.location.href);
-    const entries = [];
-
-    doc.querySelectorAll('a[href]').forEach(link => {
-      const href = link.getAttribute('href');
-      if (!href || href.startsWith('#') || href.startsWith('?')) return;
-
-      const url = new URL(href, directoryUrl);
-      if (url.origin !== window.location.origin) return;
-      if (!url.pathname.startsWith(dataRootUrl.pathname)) return;
-      if (url.pathname === directoryUrl.pathname) return;
-
-      const relativePath = decodeURIComponent(url.pathname.slice(dataRootUrl.pathname.length))
-        .replace(/\/$/, '');
-
-      if (!relativePath || relativePath.startsWith('..')) return;
-
-      entries.push({
-        path: `${DATA_ROOT}/${relativePath}`,
-        isDirectory: href.endsWith('/') || url.pathname.endsWith('/')
-      });
-    });
-
-    return entries;
-  };
-
-  const walkDirectoryListing = async (directoryPath = DATA_ROOT, visited = new Set()) => {
-    const normalizedDirectoryPath = directoryPath.replace(/\/$/, '');
-    if (visited.has(normalizedDirectoryPath)) return [];
-    visited.add(normalizedDirectoryPath);
-
-    let response;
-
-    try {
-      response = await fetch(`${encodePath(normalizedDirectoryPath)}/`);
-    } catch (error) {
-      return [];
-    }
-
-    if (!response.ok) return [];
-
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('text/html')) return [];
-
-    const entries = getDirectoryListingEntries(await response.text(), normalizedDirectoryPath);
-    const dataPaths = entries.some(entry => !entry.isDirectory && entry.path === `${normalizedDirectoryPath}/${DATA_FILE_NAME}`)
-      && normalizedDirectoryPath !== DATA_ROOT
-      ? [`${normalizedDirectoryPath}/${DATA_FILE_NAME}`]
-      : [];
-
-    const childPaths = await Promise.all(
-      entries
-        .filter(entry => entry.isDirectory)
-        .map(entry => walkDirectoryListing(entry.path, visited))
-    );
-
-    return dataPaths.concat(...childPaths);
-  };
-
-  const discoverAddonDataPaths = async () => {
-    const discoveryStrategies = isLocalHost()
-      ? [walkDirectoryListing, discoverGitHubPagesDataPaths]
-      : [discoverGitHubPagesDataPaths, walkDirectoryListing];
-
-    for (const discover of discoveryStrategies) {
-      try {
-        const dataPaths = uniqueSortedPaths(await discover());
-        if (dataPaths.length) return dataPaths;
-      } catch (error) {
-        console.warn('Не удалось автоматически найти дополнения:', error);
-      }
-    }
-
-    return FALLBACK_ADDON_DATA_PATHS;
-  };
-
-  const getEffectClass = effect => {
-    if (positiveEffects.has(effect)) return POLARITY.positive;
-    if (negativeEffects.has(effect)) return POLARITY.negative;
-    return '';
-  };
-
-  const getEffectMenuPriority = effect => {
-    if (positiveEffects.has(effect)) return 0;
-    if (negativeEffects.has(effect)) return 1;
-    return 2;
-  };
-
-  const getIngredientClassFromState = ingredient => {
-    if (!Object.prototype.hasOwnProperty.call(ingredient, 'effect_state')) return null;
-
-    const state = Number(ingredient.effect_state);
-    if (state === 1) return POLARITY.positive;
-    if (state === -1) return POLARITY.negative;
-    if (state === 0) return POLARITY.mixed;
-    return null;
-  };
-
-  const getIngredientClass = ingredient => {
-    const stateClass = getIngredientClassFromState(ingredient);
-    if (stateClass) return stateClass;
-
-    const hasPositive = ingredient.effects.some(effect => positiveEffects.has(effect));
-    const hasNegative = ingredient.effects.some(effect => negativeEffects.has(effect));
-
-    if (hasPositive && hasNegative) return POLARITY.mixed;
-    if (hasPositive) return POLARITY.positive;
-    if (hasNegative) return POLARITY.negative;
-    return '';
-  };
-
-  const getSelectionClass = (ingredient, event) => {
-    const ingredientClass = getIngredientClass(ingredient);
-
-    if (selectedPolarity) {
-      return ingredientClass === selectedPolarity || ingredientClass === POLARITY.mixed ? selectedPolarity : '';
-    }
-
-    if (ingredientClass !== POLARITY.mixed) {
-      return ingredientClass;
-    }
-
-    const clickOffset = event.pageX - $(event.currentTarget).offset().left;
-    return clickOffset < $(event.currentTarget).width() / 2 ? POLARITY.negative : POLARITY.positive;
-  };
-
-  const createCell = ({ text, className = '', data = {} }) => $('<td>')
-    .text(text)
-    .addClass(className)
-    .data(data);
-
-  const createEffectCell = (effect, isClickable = false, highlightedEffects = new Set()) => {
-    const effectClass = getEffectClass(effect);
-    const hintClass = highlightedEffects.has(effect) && effectClass ? `hint-${effectClass}` : '';
-    const $cell = createCell({
-      text: effect,
-      className: `${effectClass} ${hintClass}`,
-      data: { effect }
-    });
-
-    if (isClickable) {
-      $cell.addClass('effect-cell');
-    }
-
-    return $cell;
-  };
-
-  const createIngredientRow = (ingredient, options = {}) => {
-    const {
-      firstCellClass,
-      effects = ingredient.effects,
-      highlightedEffects = new Set(),
-      isEffectClickable = false
-    } = options;
-    const $row = $('<tr>');
-    const ingredientClass = firstCellClass ?? selectedClasses.get(ingredient.name) ?? getIngredientClass(ingredient);
-
-    $row.append(createCell({
-      text: ingredient.name,
-      className: ingredientClass,
-      data: { name: ingredient.name }
-    }));
-
-    effects.forEach(effect => {
-      $row.append(createEffectCell(effect, isEffectClickable, highlightedEffects));
-    });
-
-    return $row;
-  };
-
-  const getBrewResultEffects = selectedIngredients => {
-    const effectCounts = new Map();
-
-    selectedIngredients.forEach(ingredient => {
-      new Set(ingredient.effects).forEach(effect => {
-        effectCounts.set(effect, (effectCounts.get(effect) || 0) + 1);
-      });
-    });
-
-    return Array.from(effectCounts.entries())
-      .filter(([, count]) => count >= 2)
-      .map(([effect]) => effect)
-      .sort(compareRu);
-  };
-
-  const getEffectMatchesPolarity = (effect, polarity) => {
-    if (polarity === POLARITY.positive) return positiveEffects.has(effect);
-    if (polarity === POLARITY.negative) return negativeEffects.has(effect);
-    return false;
-  };
-
-  const getEffectMatchesSelectedPolarity = effect => getEffectMatchesPolarity(effect, selectedPolarity);
-
-  const getOppositePolarity = polarity => {
-    if (polarity === POLARITY.positive) return POLARITY.negative;
-    if (polarity === POLARITY.negative) return POLARITY.positive;
-    return '';
-  };
-
-  const getOppositeMatchedEffects = selectedIngredients => {
-    const oppositePolarity = getOppositePolarity(selectedPolarity);
-
-    if (!selectedEffects.length || !oppositePolarity || !selectedIngredients.length) {
-      return new Set();
-    }
-
-    const matchedEffects = new Set();
-
-    selectedIngredients.forEach(ingredient => {
-      ingredient.effects.forEach(effect => {
-        if (getEffectMatchesPolarity(effect, oppositePolarity)) {
-          matchedEffects.add(effect);
-        }
-      });
-    });
-
-    return matchedEffects;
-  };
-
-  const orderEffectsByPriority = (effects, getPriority) => effects
-    .map((effect, index) => ({ effect, index, priority: getPriority(effect) }))
-    .sort((a, b) => a.priority - b.priority || a.index - b.index)
-    .map(item => item.effect);
-
-  const orderSelectedEffects = (effects, matchedEffects) => {
-    if (!selectedPolarity) {
-      return orderEffectsByPriority(effects, effect => (matchedEffects.has(effect) ? 0 : 1));
-    }
-
-    return orderEffectsByPriority(effects, effect => {
-      if (!getEffectMatchesSelectedPolarity(effect)) return 2;
-      return matchedEffects.has(effect) ? 0 : 1;
-    });
-  };
-
-  const orderCombinationEffects = (effects, matchedEffects, matchedEffectPriority) => effects
-    .map((effect, index) => {
-      const isMatched = matchedEffects.has(effect);
-
-      return {
-        effect,
-        index,
-        priority: isMatched ? 0 : getEffectMatchesSelectedPolarity(effect) ? 1 : 2,
-        matchedPriority: isMatched
-          ? matchedEffectPriority.get(effect) ?? Number.POSITIVE_INFINITY
-          : Number.POSITIVE_INFINITY
-      };
-    })
-    .sort((left, right) => left.priority - right.priority
-      || left.matchedPriority - right.matchedPriority
-      || left.index - right.index)
-    .map(item => item.effect);
-
-  const orderSelectedEffectTableEffects = effects => {
-    if (!selectedEffects.length) return effects;
-
-    const selectedEffectPolarity = getEffectClass(selectedEffect);
-    const selectedEffectSet = new Set(selectedEffects);
-    const selectedEffectsInRow = selectedEffects.filter(effect => effects.includes(effect));
-    const otherEffects = effects.filter(effect => !selectedEffectSet.has(effect));
-
-    if (!selectedEffectPolarity) {
-      return [...selectedEffectsInRow, ...otherEffects];
-    }
-
-    const oppositePolarity = getOppositePolarity(selectedEffectPolarity);
-
-    return [
-      ...selectedEffectsInRow,
-      ...orderEffectsByPriority(otherEffects, effect => {
-        if (getEffectMatchesPolarity(effect, selectedEffectPolarity)) return 0;
-        if (oppositePolarity && getEffectMatchesPolarity(effect, oppositePolarity)) return 2;
-        return 1;
-      })
-    ];
-  };
-
-  const orderBrewResultEffects = effects => {
-    if (!selectedPolarity) return effects;
-
-    return orderEffectsByPriority(effects, effect => (getEffectMatchesSelectedPolarity(effect) ? 0 : 1));
-  };
-
-  const createBrewResultRow = selectedIngredients => {
-    const resultEffects = orderBrewResultEffects(getBrewResultEffects(selectedIngredients));
-    const $row = $('<tr>').addClass('brew-result-row');
-
-    $('<td>')
-      .addClass(`brew-result-label ${selectedPolarity ? `hint-${selectedPolarity}` : ''}`)
-      .text('У вас получится:')
-      .appendTo($row);
-
-    if (selectedIngredients.length < 2) {
-      createCell({ text: 'Выберите еще ингредиент', className: 'brew-result-effects' }).appendTo($row);
-    } else if (!resultEffects.length) {
-      createCell({ text: 'Нет совпадающих эффектов', className: 'brew-result-effects' }).appendTo($row);
-    } else {
-      resultEffects.slice(0, 4).forEach(effect => {
-        const effectClass = getEffectClass(effect);
-        createCell({
-          text: effect,
-          className: `brew-result-effects effect-cell ${effectClass} ${effectClass ? `hint-${effectClass}` : ''}`,
-          data: { effect }
-        }).appendTo($row);
-      });
-    }
-
-    while ($row.children('td').length < 5) {
-      createCell({ text: '', className: 'brew-result-effects' }).appendTo($row);
-    }
-
-    return $row;
-  };
-
-  const rebuildIndexes = () => {
-    ingredientByName = new Map();
-    namesByEffect = new Map();
-
-    ingredients.forEach(ingredient => {
-      ingredientByName.set(ingredient.name, ingredient);
-
-      ingredient.effects.forEach(effect => {
-        if (!namesByEffect.has(effect)) {
-          namesByEffect.set(effect, new Set());
-        }
-
-        namesByEffect.get(effect).add(ingredient.name);
-      });
-    });
-  };
-
-  const getVisibleIngredients = () => ingredients.filter(ingredient => {
-    if (selectedNames.has(ingredient.name)) return false;
-    if (selectedEffects.length && !selectedEffects.every(effect => ingredient.effects.includes(effect))) return false;
-    if (searchQuery && !ingredient.name.toLowerCase().includes(searchQuery)) return false;
-    return true;
-  });
-
-  const getAdditionalEffectCandidates = () => {
-    const candidates = new Set();
-
-    ingredients.forEach(ingredient => {
-      if (selectedNames.has(ingredient.name)) return;
-      if (searchQuery && !ingredient.name.toLowerCase().includes(searchQuery)) return;
-      if (!selectedEffects.every(effect => ingredient.effects.includes(effect))) return;
-
-      ingredient.effects.forEach(effect => {
-        if (!selectedEffects.includes(effect)) {
-          candidates.add(effect);
-        }
-      });
-    });
-
-    return candidates;
-  };
-
-  const updateEffectHeaderControls = () => {
-    $effectHeaderButtons.each(function () {
-      const $button = $(this);
-      const slot = Number($button.data('effectSlot'));
-      const isFirstSlot = slot === 0;
-      const isNextSlot = selectedEffects.length > 0 && slot === selectedEffects.length;
-      const canAddEffect = isNextSlot && selectedEffects.length < MAX_EFFECT_FILTER_COUNT;
-
-      $button
-        .prop('disabled', !isFirstSlot && !canAddEffect)
-        .toggleClass('effect-header-button-add', canAddEffect)
-        .text(canAddEffect ? `+ Эффект ${slot + 1}` : `Эффект ${slot + 1}`);
-    });
-  };
-
-  const updateMainHintEffectControl = () => {
-    const labels = [
-      'Выберите эффект чтобы посмотреть все ингридиенты',
-      'Выберите второй эффект, чтобы найти совпадения.',
-      'Выберите третий эффект, чтобы найти совпадения.',
-      'Выберите четвертый эффект, чтобы найти совпадения.'
-    ];
-    const hasMaxSelectedEffects = selectedEffects.length >= MAX_EFFECT_FILTER_COUNT;
-
-    $mainHintEffectBtn
-      .prop('disabled', hasMaxSelectedEffects)
-      .text(hasMaxSelectedEffects
-        ? 'Ингридиенты с выбранными эффектами:'
-        : labels[selectedEffects.length]);
-  };
-
-  const updateFilterControls = () => {
-    const hasSelectedEffects = selectedEffects.length > 0;
-
-    $backBtn.toggle(hasSelectedEffects);
-    $effectTitleText.text(selectedEffects.join(' / '));
-    $effectTitle.css('display', hasSelectedEffects ? 'flex' : 'none');
-    $mainHintRow.show();
-    updateEffectHeaderControls();
-    updateMainHintEffectControl();
-  };
-
-  const renderEffectsMenu = () => {
-    const effects = Array.from(namesByEffect.keys())
-      .sort((a, b) => getEffectMenuPriority(a) - getEffectMenuPriority(b) || compareRu(a, b));
-    const fragment = document.createDocumentFragment();
-
-    $('<input>')
-      .attr({
-        type: 'text',
-        placeholder: 'Поиск по названию...',
-        autocomplete: 'off'
-      })
-      .addClass('effect-search')
-      .appendTo(fragment);
-
-    effects.forEach(effect => {
-      $('<button>')
-        .attr('type', 'button')
-        .addClass('effect-btn')
-        .addClass(getEffectClass(effect))
-        .data('effect', effect)
-        .text(effect)
-        .appendTo(fragment);
-    });
-
-    $effectsMenu.empty().append(fragment);
-    updateEffectsMenuButtons();
-  };
+  const config = window.AlchemyConfig;
+  const state = window.AlchemyState.create(config);
+  const logic = window.AlchemyLogic.create(config, state);
+  const renderer = window.AlchemyRenderer.create(config, state, logic);
+  const dataLoader = window.AlchemyDataLoader.create(config, state, logic, renderer);
+  const { dom } = renderer;
 
   const renderTable = () => {
-    const fragment = document.createDocumentFragment();
-    const visibleIngredients = getVisibleIngredients();
-    const selectedIngredients = Array.from(selectedNames)
-      .map(name => ingredientByName.get(name))
-      .filter(Boolean);
-    const oppositeMatchedEffects = getOppositeMatchedEffects(selectedIngredients);
-    const displayIngredients = visibleIngredients
-      .map((ingredient, index) => ({
-        ingredient,
-        index,
-        oppositeMatchCount: ingredient.effects.filter(effect => oppositeMatchedEffects.has(effect)).length,
-        effects: selectedEffects.length
-          ? orderSelectedEffectTableEffects(ingredient.effects)
-          : ingredient.effects
-      }))
-      .sort((left, right) => {
-        if (!selectedEffects.length) return left.index - right.index;
-
-        return (oppositeMatchedEffects.size
-          ? Number(left.oppositeMatchCount > 0) - Number(right.oppositeMatchCount > 0)
-          : 0)
-          || compareEffectListsByPolarity(left.effects, right.effects, getEffectClass(selectedEffect))
-          || compareRu(left.ingredient.name, right.ingredient.name);
-      });
-
-    displayIngredients.forEach(({ ingredient, oppositeMatchCount, effects }) => {
-      const highlightedEffects = selectedEffects.length && oppositeMatchCount > 0
-        ? new Set(ingredient.effects.filter(effect => oppositeMatchedEffects.has(effect)))
-        : new Set();
-
-      createIngredientRow(ingredient, {
-        effects,
-        highlightedEffects,
-        isEffectClickable: true
-      }).appendTo(fragment);
-    });
-
-    $dataTableBody.empty().append(fragment);
-    $visibleCount.text(visibleIngredients.length);
-    updateFilterControls();
-  };
-
-  const renderSelectionTable = () => {
-    const fragment = document.createDocumentFragment();
-    const selectedIngredients = Array.from(selectedNames)
-      .map(name => ingredientByName.get(name))
-      .filter(Boolean);
-    const matchedEffects = new Set(getBrewResultEffects(selectedIngredients));
-
-    if (selectedIngredients.length) {
-      createBrewResultRow(selectedIngredients).appendTo(fragment);
-    }
-
-    selectedIngredients.forEach(ingredient => {
-      const $row = createIngredientRow(ingredient, {
-        firstCellClass: selectedClasses.get(ingredient.name) || getIngredientClass(ingredient),
-        effects: orderSelectedEffects(ingredient.effects, matchedEffects),
-        isEffectClickable: true
-      });
-      const $nameCell = $row.find('td:first-child');
-
-      $nameCell.empty().append(
-        $('<div>').addClass('selected-name-content').append(
-          $('<span>').text(ingredient.name),
-          $('<button>')
-            .attr('type', 'button')
-            .addClass('remove-btn')
-            .data('name', ingredient.name)
-            .text('Удалить')
-        )
-      );
-
-      $row.appendTo(fragment);
-    });
-
-    $selectionTableBody.empty().append(fragment);
-    $selectionTable.toggle(selectedIngredients.length > 0);
-    $selectionTitle.toggle(selectedIngredients.length > 0);
-  };
-
-  const renderCombinationTable = () => {
-    const selectedIngredients = Array.from(selectedNames)
-      .map(name => ingredientByName.get(name))
-      .filter(Boolean);
-
-    if (!selectedIngredients.length || !selectedPolarity) {
-      $combinationTableBody.empty();
-      $combinationTable.hide();
-      $combinationTitle.hide().text('');
-      return;
-    }
-
-    const effectsToShow = new Set();
-    const effectsToExclude = new Set();
-    const effectPriority = new Map();
-
-    selectedIngredients.forEach(ingredient => {
-      ingredient.effects.forEach(effect => {
-        if (selectedPolarity === POLARITY.positive && positiveEffects.has(effect)) {
-          effectsToShow.add(effect);
-          if (!effectPriority.has(effect)) {
-            effectPriority.set(effect, effectPriority.size);
-          }
-          return;
-        }
-
-        if (selectedPolarity === POLARITY.negative && negativeEffects.has(effect)) {
-          effectsToShow.add(effect);
-          if (!effectPriority.has(effect)) {
-            effectPriority.set(effect, effectPriority.size);
-          }
-          return;
-        }
-
-        effectsToExclude.add(effect);
-      });
-    });
-
-    const candidateNames = new Set();
-
-    effectsToShow.forEach(effect => {
-      (namesByEffect.get(effect) || []).forEach(name => {
-        if (!selectedNames.has(name)) {
-          candidateNames.add(name);
-        }
-      });
-    });
-
-    const finalCombinationNames = Array.from(candidateNames)
-      .filter(name => {
-        const ingredient = ingredientByName.get(name);
-        return ingredient && !ingredient.effects.some(effect => effectsToExclude.has(effect));
-      })
-      .sort((leftName, rightName) => {
-        const leftIngredient = ingredientByName.get(leftName);
-        const rightIngredient = ingredientByName.get(rightName);
-        const getMatchedEffects = ingredient => ingredient.effects.filter(effect => effectsToShow.has(effect));
-        const getMatchPriority = matchedEffects => Math.min(
-          ...matchedEffects.map(effect => effectPriority.get(effect) ?? Number.POSITIVE_INFINITY)
-        );
-        const leftMatchedEffects = getMatchedEffects(leftIngredient);
-        const rightMatchedEffects = getMatchedEffects(rightIngredient);
-        const leftPriority = getMatchPriority(leftMatchedEffects);
-        const rightPriority = getMatchPriority(rightMatchedEffects);
-        const leftEffects = orderCombinationEffects(leftIngredient.effects, effectsToShow, effectPriority);
-        const rightEffects = orderCombinationEffects(rightIngredient.effects, effectsToShow, effectPriority);
-
-        return rightMatchedEffects.length - leftMatchedEffects.length
-          || leftPriority - rightPriority
-          || compareEffectListsByPolarity(leftEffects, rightEffects, selectedPolarity)
-          || compareRu(leftName, rightName);
-      });
-
-    const fragment = document.createDocumentFragment();
-
-    finalCombinationNames.forEach(name => {
-      const ingredient = ingredientByName.get(name);
-      const matchedEffects = new Set(ingredient.effects.filter(effect => effectsToShow.has(effect)));
-
-      createIngredientRow(ingredient, {
-        effects: orderCombinationEffects(ingredient.effects, effectsToShow, effectPriority),
-        highlightedEffects: matchedEffects.size > 1 ? matchedEffects : new Set(),
-        isEffectClickable: true
-      }).appendTo(fragment);
-    });
-
-    const excludedMatchMessage = selectedPolarity === POLARITY.positive
-      ? 'Исключены отрицательные совпадения'
-      : 'Исключены положительные совпадения';
-
-    $combinationTableBody.empty().append(fragment);
-    $combinationTitle
-      .text(`Сочетается с ${selectedIngredients.map(ingredient => ingredient.name).join(' / ')}, ${finalCombinationNames.length}. ${excludedMatchMessage}`)
-      .toggle(finalCombinationNames.length > 0);
-    $combinationTable.toggle(finalCombinationNames.length > 0);
+    renderer.renderTable();
   };
 
   const renderAllTables = () => {
-    renderSelectionTable();
-    renderCombinationTable();
-    renderTable();
+    renderer.renderAllTables();
   };
 
-  const canAddIngredient = ingredient => {
-    if (!ingredient || selectedNames.has(ingredient.name)) return false;
-    if (selectedNames.size >= MAX_SELECTION_COUNT) return false;
-    if (!selectedPolarity) return true;
+  const addIngredient = (name, selectionPolarity = '') => {
+    const ingredient = state.ingredientByName.get(name);
 
-    const ingredientClass = getIngredientClass(ingredient);
+    if (!logic.canAddIngredient(ingredient)) return;
 
-    if (selectedPolarity === POLARITY.positive) {
-      return ingredientClass === POLARITY.positive || ingredientClass === POLARITY.mixed;
-    }
-
-    return ingredientClass === POLARITY.negative || ingredientClass === POLARITY.mixed;
-  };
-
-  const addIngredient = (name, event) => {
-    const ingredient = ingredientByName.get(name);
-
-    if (!canAddIngredient(ingredient)) return;
-
-    const selectionClass = getSelectionClass(ingredient, event);
+    const selectionClass = logic.getSelectionClass(ingredient, selectionPolarity);
     if (!selectionClass) return;
 
-    selectedNames.add(name);
-    selectedClasses.set(name, selectionClass);
+    state.selectedNames.add(name);
+    state.selectedClasses.set(name, selectionClass);
 
-    if (!selectedPolarity) {
-      selectedPolarity = selectionClass;
+    if (!state.selectedPolarity) {
+      state.selectedPolarity = selectionClass;
     }
 
     $('html, body').animate({ scrollTop: 0 }, 'fast');
@@ -904,38 +34,25 @@ $(document).ready(() => {
   };
 
   const removeIngredient = name => {
-    selectedNames.delete(name);
-    selectedClasses.delete(name);
+    state.selectedNames.delete(name);
+    state.selectedClasses.delete(name);
 
-    if (selectedNames.size === 0) {
-      selectedPolarity = null;
+    if (state.selectedNames.size === 0) {
+      state.selectedPolarity = null;
     }
 
     renderAllTables();
   };
 
   const clearSelection = () => {
-    selectedNames.clear();
-    selectedClasses.clear();
-    selectedPolarity = null;
+    state.selectedNames.clear();
+    state.selectedClasses.clear();
+    state.selectedPolarity = null;
     renderAllTables();
   };
 
-  const syncSelectedEffect = () => {
-    selectedEffect = selectedEffects[0] || null;
-  };
-
   const setSelectedEffects = effects => {
-    const uniqueEffects = [];
-
-    effects.forEach(effect => {
-      if (effect && namesByEffect.has(effect) && !uniqueEffects.includes(effect)) {
-        uniqueEffects.push(effect);
-      }
-    });
-
-    selectedEffects = uniqueEffects.slice(0, MAX_EFFECT_FILTER_COUNT);
-    syncSelectedEffect();
+    logic.setSelectedEffects(effects);
     renderTable();
   };
 
@@ -944,618 +61,69 @@ $(document).ready(() => {
   };
 
   const addSelectedEffect = effect => {
-    setSelectedEffects([...selectedEffects, effect]);
-  };
-
-  const stepBackSelectedEffect = () => {
-    if (!selectedEffects.length) return;
-
-    selectedEffects = selectedEffects.slice(0, -1);
-    syncSelectedEffect();
+    logic.addSelectedEffect(effect);
     renderTable();
   };
 
-  const scrollToEffectTable = () => {
-    const $target = $effectTitle.is(':visible') ? $effectTitle : $('#data-table');
-    const top = $target.offset()?.top;
-
-    if (typeof top === 'number') {
-      $('html, body').animate({ scrollTop: Math.max(top - 8, 0) }, 'fast');
+  const stepBackSelectedEffect = () => {
+    if (logic.stepBackSelectedEffect()) {
+      renderTable();
     }
   };
 
   const setSelectedEffectAndScroll = effect => {
     setSelectedEffect(effect);
-    scrollToEffectTable();
+    renderer.scrollToEffectTable();
   };
-
-  const showMessageRow = message => {
-    $dataTableBody.empty().append(
-      $('<tr>').append(
-        $('<td>')
-          .attr('colspan', 5)
-          .text(message)
-      )
-    );
-  };
-
-  const showLoadError = () => {
-    showMessageRow('Не удалось загрузить данные. Проверьте файлы в папке data.');
-  };
-
-  const createRootSourceDefinition = () => ({
-    id: ROOT_DATA_PATH,
-    dataPath: ROOT_DATA_PATH,
-    effectsPath: ROOT_EFFECTS_PATH,
-    translationsPath: getEffectTranslationsPath(ROOT_DATA_PATH),
-    name: 'Стандартный data.json',
-    root: true,
-    required: true
-  });
-
-  const getAddonIsActive = addon => (rootDataEnabled && addon.defaultEnabled) || selectedAddonIds.has(addon.id);
-
-  const getActiveSourceDefinitions = () => {
-    const sources = [];
-
-    if (rootDataEnabled) {
-      sources.push(createRootSourceDefinition());
-    }
-
-    availableAddons.forEach(addon => {
-      if (getAddonIsActive(addon)) {
-        sources.push(addon);
-      }
-    });
-
-    return sources;
-  };
-
-  const getSourceEntry = source => sourceCache.get(source.id);
-  const isSourceLoaded = source => getSourceEntry(source)?.status === SOURCE_STATUS.loaded;
-
-  const getLoadedActiveSourceDefinitions = () => getActiveSourceDefinitions()
-    .filter(isSourceLoaded);
-
-  const getOrCreateSourceEntry = source => {
-    if (!sourceCache.has(source.id)) {
-      sourceCache.set(source.id, {
-        id: source.id,
-        data: [],
-        effects: null,
-        polarity: null,
-        translations: new Map(),
-        status: SOURCE_STATUS.idle,
-        error: null,
-        promise: null
-      });
-    }
-
-    return sourceCache.get(source.id);
-  };
-
-  const rememberSourceCount = (source, data) => {
-    const count = Array.isArray(data) ? data.length : 0;
-
-    if (source.root) {
-      rootIngredientCount = count;
-      return;
-    }
-
-    addonIngredientCounts.set(source.id, count);
-  };
-
-  const getUniqueEffects = effects => Array.from(new Set(
-    effects.filter(effect => typeof effect === 'string' && effect)
-  ));
-
-  const buildEffectsByIngredientName = effectsData => {
-    const effectsByName = new Map();
-
-    if (!Array.isArray(effectsData)) {
-      return effectsByName;
-    }
-
-    effectsData.forEach(entry => {
-      if (!entry || typeof entry.effect !== 'string' || !Array.isArray(entry.names)) return;
-
-      entry.names.forEach(name => {
-        if (typeof name !== 'string' || !name) return;
-
-        if (!effectsByName.has(name)) {
-          effectsByName.set(name, []);
-        }
-
-        effectsByName.get(name).push(entry.effect);
-      });
-    });
-
-    effectsByName.forEach((effects, name) => {
-      effectsByName.set(name, getUniqueEffects(effects));
-    });
-
-    return effectsByName;
-  };
-
-  const normalizeSourceData = (data, effectsData) => {
-    const effectsByName = buildEffectsByIngredientName(effectsData);
-
-    return data
-      .filter(ingredient => ingredient && typeof ingredient.name === 'string' && ingredient.name)
-      .map(ingredient => {
-        const ingredientEffects = Array.isArray(ingredient.effects)
-          ? getUniqueEffects(ingredient.effects)
-          : [];
-        const effects = ingredientEffects.length
-          ? ingredientEffects
-          : effectsByName.get(ingredient.name) || [];
-
-        return { ...ingredient, effects };
-      });
-  };
-
-  const normalizeEffectTranslations = translationsData => {
-    const translations = new Map();
-
-    if (!translationsData || typeof translationsData !== 'object' || Array.isArray(translationsData)) {
-      return translations;
-    }
-
-    Object.entries(translationsData).forEach(([sourceEffect, targetEffect]) => {
-      if (typeof sourceEffect === 'string' && typeof targetEffect === 'string') {
-        translations.set(sourceEffect, targetEffect);
-      }
-    });
-
-    return translations;
-  };
-
-  const translateEffects = (effects, translations) => {
-    if (!translations.size) return effects;
-
-    return getUniqueEffects(effects.map(effect => translations.get(effect) || effect));
-  };
-
-  const ensureRootPolarityLoaded = async () => {
-    if (rootPolarityStatus === SOURCE_STATUS.loaded) {
-      return rootPolarityData;
-    }
-
-    if (rootPolarityStatus === SOURCE_STATUS.loading) {
-      return rootPolarityPromise;
-    }
-
-    rootPolarityStatus = SOURCE_STATUS.loading;
-    rootPolarityPromise = fetchJson(ROOT_EFFECT_POLARITY_PATH)
-      .then(data => {
-        rootPolarityData = data;
-        rootPolarityStatus = SOURCE_STATUS.loaded;
-        return data;
-      })
-      .catch(error => {
-        rootPolarityStatus = SOURCE_STATUS.error;
-        rootPolarityPromise = null;
-        throw error;
-      });
-
-    return rootPolarityPromise;
-  };
-
-  const ensureSourceLoaded = async source => {
-    const entry = getOrCreateSourceEntry(source);
-
-    if (entry.status === SOURCE_STATUS.loaded) {
-      return entry;
-    }
-
-    if (entry.status === SOURCE_STATUS.loading) {
-      return entry.promise;
-    }
-
-    entry.status = SOURCE_STATUS.loading;
-    entry.error = null;
-    renderAddons();
-
-    entry.promise = (async () => {
-      try {
-        const [data, effects, polarity, translations] = await Promise.all([
-          source.root ? fetchJson(source.dataPath) : fetchOptionalJson(source.dataPath),
-          fetchOptionalJson(source.effectsPath),
-          source.root ? Promise.resolve(null) : fetchOptionalJson(source.polarityPath),
-          fetchOptionalJson(source.translationsPath)
-        ]);
-
-        if (!Array.isArray(data)) {
-          throw new Error(`Не удалось загрузить ${source.dataPath}`);
-        }
-
-        entry.data = normalizeSourceData(data, effects);
-        entry.effects = Array.isArray(effects) ? effects : null;
-        entry.polarity = polarity;
-        entry.translations = normalizeEffectTranslations(translations);
-        entry.status = SOURCE_STATUS.loaded;
-        entry.error = null;
-        rememberSourceCount(source, entry.data);
-      } catch (error) {
-        entry.data = [];
-        entry.effects = null;
-        entry.polarity = null;
-        entry.translations = new Map();
-        entry.status = SOURCE_STATUS.error;
-        entry.error = error;
-
-        if (source.required) {
-          throw error;
-        }
-
-        console.warn(`Не удалось загрузить дополнение ${source.dataPath}`, error);
-      } finally {
-        entry.promise = null;
-        renderAddons();
-      }
-
-      return entry;
-    })();
-
-    return entry.promise;
-  };
-
-  const addEffectPolarityData = (dataSet, polarityByEffect) => {
-    if (!dataSet) return;
-
-    (dataSet.positive_effects || []).forEach(effect => {
-      polarityByEffect.set(effect, POLARITY.positive);
-    });
-
-    (dataSet.negative_effects || []).forEach(effect => {
-      polarityByEffect.set(effect, POLARITY.negative);
-    });
-  };
-
-  const rebuildCurrentData = () => {
-    const mergedByName = new Map();
-    const polarityByEffect = new Map();
-    const activeSources = getLoadedActiveSourceDefinitions();
-    const effectTranslations = new Map();
-
-    addEffectPolarityData(rootPolarityData, polarityByEffect);
-
-    activeSources.forEach(source => {
-      const entry = getSourceEntry(source);
-
-      entry.translations.forEach((targetEffect, sourceEffect) => {
-        effectTranslations.set(sourceEffect, targetEffect);
-      });
-    });
-
-    activeSources.forEach(source => {
-      const entry = getSourceEntry(source);
-
-      entry.data.forEach(ingredient => {
-        if (!ingredient || !ingredient.name || !Array.isArray(ingredient.effects)) return;
-
-        mergedByName.set(ingredient.name, {
-          ...ingredient,
-          effects: translateEffects(ingredient.effects, effectTranslations)
-        });
-      });
-
-      addEffectPolarityData(entry.polarity, polarityByEffect);
-    });
-
-    positiveEffects = new Set();
-    negativeEffects = new Set();
-
-    polarityByEffect.forEach((polarity, effect) => {
-      if (polarity === POLARITY.positive) {
-        positiveEffects.add(effect);
-      }
-
-      if (polarity === POLARITY.negative) {
-        negativeEffects.add(effect);
-      }
-    });
-
-    ingredients = Array.from(mergedByName.values())
-      .sort((a, b) => compareRu(a.name, b.name));
-
-    rebuildIndexes();
-    reconcileSelectionWithLoadedData();
-    renderEffectsMenu();
-    renderAddons();
-    renderAllTables();
-  };
-
-  const reconcileSelectionWithLoadedData = () => {
-    selectedNames.forEach(name => {
-      if (!ingredientByName.has(name)) {
-        selectedNames.delete(name);
-        selectedClasses.delete(name);
-      }
-    });
-
-    if (selectedNames.size === 0) {
-      selectedPolarity = null;
-    }
-
-    selectedEffects = selectedEffects.filter(effect => namesByEffect.has(effect));
-    syncSelectedEffect();
-  };
-
-  const getRootAddonCountLabel = () => {
-    if (!Number.isInteger(rootIngredientCount)) {
-      return 'Стандартный data.json';
-    }
-
-    const hiddenAddonParts = availableAddons
-      .filter(addon => addon.defaultEnabled)
-      .map(addon => ({
-        name: addon.name,
-        count: addonIngredientCounts.get(addon.id)
-      }))
-      .filter(addon => Number.isInteger(addon.count));
-
-    if (!hiddenAddonParts.length) {
-      return `Стандартный data.json, ${rootIngredientCount}`;
-    }
-
-    const total = hiddenAddonParts.reduce((sum, addon) => sum + addon.count, rootIngredientCount);
-    const formula = [
-      rootIngredientCount,
-      ...hiddenAddonParts.map(addon => `${addon.name} (${addon.count})`)
-    ].join(' + ');
-
-    return `Стандартный data.json, ${formula} = ${total}`;
-  };
-
-  const renderAddons = () => {
-    const selectableAddons = availableAddons.filter(addon => addon.selectable);
-    const fragment = document.createDocumentFragment();
-
-    const $rootLabel = $('<label>')
-      .addClass('addon-option')
-      .attr('for', 'addon-root-data')
-      .attr('title', ROOT_DATA_PATH);
-
-    $('<input>')
-      .attr({ type: 'checkbox', id: 'addon-root-data' })
-      .data('baseData', true)
-      .prop('checked', rootDataEnabled)
-      .appendTo($rootLabel);
-
-    $('<span>').text(getRootAddonCountLabel()).appendTo($rootLabel);
-    $rootLabel.appendTo(fragment);
-
-    selectableAddons.forEach((addon, index) => {
-      const inputId = `addon-${index}`;
-      const $label = $('<label>')
-        .addClass('addon-option')
-        .attr('for', inputId)
-        .attr('title', addon.id);
-
-      $('<input>')
-        .attr({ type: 'checkbox', id: inputId })
-        .data('addonId', addon.id)
-        .prop('checked', selectedAddonIds.has(addon.id))
-        .appendTo($label);
-
-      const count = addonIngredientCounts.get(addon.id);
-      const labelText = Number.isInteger(count) ? `${addon.name}, ${count}` : addon.name;
-
-      $('<span>').text(labelText).appendTo($label);
-      $label.appendTo(fragment);
-    });
-
-    $addonsList.empty().append(fragment);
-    $addonsBtn.show();
-  };
-
-  const loadActiveData = async () => {
-    const currentLoadToken = ++dataLoadToken;
-    const activeSources = getActiveSourceDefinitions();
-    const hasLoadedActiveSource = activeSources.some(isSourceLoaded);
-
-    rebuildCurrentData();
-
-    if (activeSources.length && !hasLoadedActiveSource) {
-      showMessageRow('Загрузка данных...');
-    }
-
-    try {
-      if (activeSources.length) {
-        await ensureRootPolarityLoaded();
-      }
-
-      for (const source of activeSources) {
-        if (currentLoadToken !== dataLoadToken) return;
-
-        const wasLoaded = isSourceLoaded(source);
-        const entry = await ensureSourceLoaded(source);
-
-        if (currentLoadToken !== dataLoadToken) return;
-
-        if (!wasLoaded && entry.status === SOURCE_STATUS.loaded) {
-          rebuildCurrentData();
-        }
-      }
-
-      if (currentLoadToken === dataLoadToken) {
-        rebuildCurrentData();
-      }
-    } catch (error) {
-      if (currentLoadToken !== dataLoadToken) return;
-      console.error('Ошибка загрузки данных:', error);
-      showLoadError();
-    }
-  };
-
-  const initializeData = async () => {
-    showMessageRow('Загрузка данных...');
-
-    try {
-      availableAddons = createAddonDefinitions(await discoverAddonDataPaths());
-      selectedAddonIds = new Set(availableAddons.filter(addon => addon.selectable).map(addon => addon.id));
-      renderAddons();
-      await loadActiveData();
-    } catch (error) {
-      console.error('Ошибка инициализации данных:', error);
-      showLoadError();
-    }
-  };
-
-  const positionMenu = ($button, $menu) => {
-    const isMobile = window.matchMedia('(max-width: 700px)').matches;
-
-    $menu
-      .removeClass('table-menu')
-      .css({
-        position: '',
-        top: '',
-        left: isMobile ? 0 : $button.position().left,
-        right: '',
-        width: '',
-        minWidth: '',
-        maxWidth: ''
-      });
-  };
-
-  const positionTableMenu = ($positionAnchor, $sizeAnchor, $menu) => {
-    const positionRect = $positionAnchor[0].getBoundingClientRect();
-    const sizeRect = $sizeAnchor[0].getBoundingClientRect();
-    const viewportPadding = 4;
-    const width = Math.min(
-      Math.max(sizeRect.width, 1),
-      Math.max(window.innerWidth - viewportPadding * 2, 1)
-    );
-    const left = Math.min(
-      Math.max(sizeRect.left, viewportPadding),
-      Math.max(window.innerWidth - width - viewportPadding, viewportPadding)
-    );
-
-    $menu
-      .addClass('table-menu')
-      .css({
-        position: 'fixed',
-        top: `${positionRect.bottom}px`,
-        left: `${left}px`,
-        right: 'auto',
-        width: `${width}px`,
-        minWidth: 0,
-        maxWidth: `calc(100vw - ${viewportPadding * 2}px)`
-      });
-  };
-
-  const updateEffectsMenuButtons = () => {
-    const query = normalizeSearch($effectsMenu.find('.effect-search').val() || '');
-    const additionalEffectCandidates = effectMenuMode === EFFECT_MENU_MODE.add
-      ? getAdditionalEffectCandidates()
-      : null;
-
-    $effectsMenu.find('.effect-btn').each(function () {
-      const effect = $(this).data('effect');
-      const matchesSearch = normalizeSearch(effect).includes(query);
-      const canUseEffect = effectMenuMode !== EFFECT_MENU_MODE.add
-        || additionalEffectCandidates.has(effect);
-
-      $(this).toggle(matchesSearch && canUseEffect);
-    });
-  };
-
-  const closeMenus = () => {
-    $effectsMenu.hide();
-    $addonsMenu.hide();
-  };
-
-  const showEffectsMenu = (mode = EFFECT_MENU_MODE.replace, options = {}) => {
-    const {
-      canToggle = false,
-      $positionAnchor = $('#menu-btn'),
-      $sizeAnchor = $positionAnchor,
-      alignToTable = false
-    } = typeof options === 'boolean' ? { canToggle: options } : options;
-    const shouldShow = canToggle ? !$effectsMenu.is(':visible') || effectMenuMode !== mode : true;
-
-    closeMenus();
-
-    if (!shouldShow) return;
-
-    effectMenuMode = mode;
-    if (alignToTable) {
-      positionTableMenu($positionAnchor, $sizeAnchor, $effectsMenu);
-    } else {
-      positionMenu($positionAnchor, $effectsMenu);
-    }
-
-    updateEffectsMenuButtons();
-    $effectsMenu.show();
-  };
-
-  const getEffectSlotCell = slot => $effectHeaderButtons
-    .eq(Math.min(Math.max(slot, 0), MAX_EFFECT_FILTER_COUNT - 1))
-    .closest('th');
-
-  const toggleMenu = ($button, $menu) => {
-    const shouldShow = !$menu.is(':visible');
-
-    closeMenus();
-
-    if (shouldShow) {
-      positionMenu($button, $menu);
-      $menu.show();
-    }
-  };
-
-  $effectsMenu.hide();
-  $addonsMenu.hide();
 
   $('#menu-btn').on('click', event => {
     event.stopPropagation();
-    showEffectsMenu(EFFECT_MENU_MODE.replace, true);
+    renderer.showEffectsMenu(config.EFFECT_MENU_MODE.replace, true);
   });
 
-  $addonsBtn.on('click', event => {
+  dom.$addonsBtn.on('click', event => {
     event.stopPropagation();
-    toggleMenu($addonsBtn, $addonsMenu);
+    renderer.toggleMenu(dom.$addonsBtn, dom.$addonsMenu);
   });
 
   $('.menu').on('click', event => {
     event.stopPropagation();
   });
 
-  $(document).on('click', closeMenus);
+  $(document).on('click', renderer.closeMenus);
 
   $(document).on('keydown', event => {
     if (event.key === 'Escape') {
-      closeMenus();
+      renderer.closeMenus();
     }
   });
 
-  $mainHintEffectBtn.on('click', event => {
+  dom.$mainHintEffectBtn.on('click', event => {
     event.stopPropagation();
 
-    if (selectedEffects.length >= MAX_EFFECT_FILTER_COUNT) return;
+    if (state.selectedEffects.length >= config.MAX_EFFECT_FILTER_COUNT) return;
 
-    const effectSlot = selectedEffects.length ? selectedEffects.length : 0;
-    const $effectSlotCell = getEffectSlotCell(effectSlot);
+    const effectSlot = state.selectedEffects.length ? state.selectedEffects.length : 0;
+    const $effectSlotCell = renderer.getEffectSlotCell(effectSlot);
 
-    showEffectsMenu(selectedEffects.length ? EFFECT_MENU_MODE.add : EFFECT_MENU_MODE.replace, {
+    renderer.showEffectsMenu(state.selectedEffects.length ? config.EFFECT_MENU_MODE.add : config.EFFECT_MENU_MODE.replace, {
       $positionAnchor: $effectSlotCell,
       $sizeAnchor: $effectSlotCell,
       alignToTable: true
     });
   });
 
-  $effectHeaderButtons.on('click', function (event) {
+  dom.$effectHeaderButtons.on('click', function (event) {
     const $headerCell = $(this).closest('th');
     const slot = Number($(this).data('effectSlot'));
-    const canAddEffect = selectedEffects.length > 0
-      && slot === selectedEffects.length
-      && selectedEffects.length < MAX_EFFECT_FILTER_COUNT;
+    const canAddEffect = state.selectedEffects.length > 0
+      && slot === state.selectedEffects.length
+      && state.selectedEffects.length < config.MAX_EFFECT_FILTER_COUNT;
 
     event.stopPropagation();
 
     if (slot === 0) {
-      showEffectsMenu(EFFECT_MENU_MODE.replace, {
+      renderer.showEffectsMenu(config.EFFECT_MENU_MODE.replace, {
         $positionAnchor: $headerCell,
         $sizeAnchor: $headerCell,
         alignToTable: true
@@ -1564,7 +132,7 @@ $(document).ready(() => {
     }
 
     if (canAddEffect) {
-      showEffectsMenu(EFFECT_MENU_MODE.add, {
+      renderer.showEffectsMenu(config.EFFECT_MENU_MODE.add, {
         $positionAnchor: $headerCell,
         $sizeAnchor: $headerCell,
         alignToTable: true
@@ -1572,72 +140,72 @@ $(document).ready(() => {
     }
   });
 
-  $addonsList.on('change', 'input[type="checkbox"]', function () {
+  dom.$addonsList.on('change', 'input[type="checkbox"]', function () {
     if ($(this).data('baseData')) {
-      rootDataEnabled = this.checked;
-      loadActiveData();
+      state.rootDataEnabled = this.checked;
+      dataLoader.loadActiveData();
       return;
     }
 
     const addonId = $(this).data('addonId');
 
     if (this.checked) {
-      selectedAddonIds.add(addonId);
+      state.selectedAddonIds.add(addonId);
     } else {
-      selectedAddonIds.delete(addonId);
+      state.selectedAddonIds.delete(addonId);
     }
 
-    loadActiveData();
+    dataLoader.loadActiveData();
   });
 
-  $search.on('input', function () {
-    searchQuery = normalizeSearch($(this).val());
+  dom.$search.on('input', function () {
+    state.searchQuery = logic.normalizeSearch($(this).val());
     renderTable();
   });
 
-  $backBtn.add($effectBackBtn).on('click', stepBackSelectedEffect);
+  dom.$backBtn.add(dom.$effectBackBtn).on('click', stepBackSelectedEffect);
 
-  $dataTableBody.on('click', 'td:first-child', function (event) {
-    addIngredient($(this).data('name'), event);
+  dom.$dataTableBody.on('click', '.ingredient-add-btn', function () {
+    addIngredient($(this).data('name'), $(this).data('selectionPolarity'));
   });
 
-  $combinationTableBody.on('click', 'td:first-child', function (event) {
-    addIngredient($(this).data('name'), event);
+  dom.$combinationTableBody.on('click', '.ingredient-add-btn', function () {
+    addIngredient($(this).data('name'), $(this).data('selectionPolarity'));
   });
 
-  $combinationTableBody.on('click', '.effect-cell', function () {
+  dom.$combinationTableBody.on('click', '.effect-cell', function () {
     setSelectedEffectAndScroll($(this).data('effect'));
   });
 
-  $selectionTableBody.on('click', '.remove-btn', function () {
+  dom.$selectionTableBody.on('click', '.remove-btn', function () {
     removeIngredient($(this).data('name'));
   });
 
-  $selectionTableBody.on('click', '.effect-cell', function () {
+  dom.$selectionTableBody.on('click', '.effect-cell', function () {
     setSelectedEffectAndScroll($(this).data('effect'));
   });
 
-  $removeAllBtn.on('click', clearSelection);
+  dom.$removeAllBtn.on('click', clearSelection);
 
-  $effectsMenu.on('click', '.effect-btn', function () {
+  dom.$effectsMenu.on('click', '.effect-btn', function () {
     const effect = $(this).data('effect');
 
-    if (effectMenuMode === EFFECT_MENU_MODE.add) {
+    if (state.effectMenuMode === config.EFFECT_MENU_MODE.add) {
       addSelectedEffect(effect);
     } else {
       setSelectedEffect(effect);
     }
 
-    closeMenus();
+    renderer.closeMenus();
   });
 
-  $effectsMenu.on('input', '.effect-search', function () {
-    updateEffectsMenuButtons();
+  dom.$effectsMenu.on('input', '.effect-search', function () {
+    renderer.updateEffectsMenuButtons();
   });
 
-  $dataTableBody.on('click', '.effect-cell', function () {
+  dom.$dataTableBody.on('click', '.effect-cell', function () {
     setSelectedEffect($(this).data('effect'));
   });
 
-  initializeData();
+  dataLoader.initializeData();
 });

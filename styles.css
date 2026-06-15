@@ -10,7 +10,7 @@ button, input { font: inherit; }
 button { min-height: 40px; }
 table { width: 100%; border-collapse: collapse; margin-top: 10px; }
 th, td { border: 1px solid black; padding: 8px; text-align: left; }
-td { cursor: pointer; }
+td { cursor: default; }
 th { background-color: #f2f2f2; cursor: default; }
 .table-title {
     margin-top: 14px;
@@ -119,6 +119,42 @@ th { background-color: #f2f2f2; cursor: default; }
 }
 .effect-cell {
     cursor: pointer;
+}
+.ingredient-action,
+.effect-action {
+    display: block;
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+.ingredient-choice-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: -8px;
+}
+.ingredient-choice {
+    min-height: 40px;
+    padding: 8px;
+}
+.ingredient-choice.negative {
+    background-color: var(--negative-bg);
+}
+.ingredient-choice.positive {
+    background-color: var(--positive-bg);
+}
+.ingredient-choice-label {
+    display: block;
+    margin-top: 2px;
+    font-size: 11px;
+    font-weight: 700;
 }
 .menu {
     display: none;
@@ -331,6 +367,16 @@ th { background-color: #f2f2f2; cursor: default; }
         margin-left: 0;
         padding: 2px 4px;
         font-size: 9px;
+    }
+    .ingredient-choice-group {
+        margin: -3px;
+    }
+    .ingredient-choice {
+        min-height: 30px;
+        padding: 3px;
+    }
+    .ingredient-choice-label {
+        font-size: 8px;
     }
     th, td {
         padding: 3px;

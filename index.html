@@ -12,9 +12,9 @@
 
     <div class="controls">
         <div class="button-group">
-            <button id="menu-btn" type="button">Выбрать Эффект</button>
+            <button id="menu-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="effects-menu">Выбрать Эффект</button>
             <div class="menu" id="effects-menu"></div>
-            <button id="addons-btn" type="button">Дополнения</button>
+            <button id="addons-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="addons-menu">Дополнения</button>
             <div class="menu addons-menu" id="addons-menu">
                 <div class="addons-list" id="addons-list"></div>
             </div>
@@ -22,7 +22,7 @@
         </div>
         <div class="search-group">
             <span class="visible-count" id="visible-count">0</span>
-            <input type="text" id="search" placeholder="Поиск по названию..." autocomplete="off" />
+            <input type="text" id="search" placeholder="Поиск по названию..." autocomplete="off" aria-label="Поиск по названию" />
         </div>
     </div>
 
@@ -85,6 +85,11 @@
         <tbody></tbody>
     </table>
 
+    <script src="src/config.js"></script>
+    <script src="src/state.js"></script>
+    <script src="src/alchemy.js"></script>
+    <script src="src/render.js"></script>
+    <script src="src/data-loader.js"></script>
     <script src="src/app.js"></script>
 </body>
 </html>
