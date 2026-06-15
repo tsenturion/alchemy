@@ -356,8 +356,14 @@ $(document).ready(() => {
     .addClass(className)
     .data(data);
 
-  const createEffectCell = (effect, isClickable = false) => {
-    const $cell = createCell({ text: effect, className: getEffectClass(effect), data: { effect } });
+  const createEffectCell = (effect, isClickable = false, highlightedEffects = new Set()) => {
+    const effectClass = getEffectClass(effect);
+    const hintClass = highlightedEffects.has(effect) && effectClass ? `hint-${effectClass}` : '';
+    const $cell = createCell({
+      text: effect,
+      className: `${effectClass} ${hintClass}`,
+      data: { effect }
+    });
 
     if (isClickable) {
       $cell.addClass('effect-cell');
@@ -367,7 +373,12 @@ $(document).ready(() => {
   };
 
   const createIngredientRow = (ingredient, options = {}) => {
-    const { firstCellClass, effects = ingredient.effects, isEffectClickable = false } = options;
+    const {
+      firstCellClass,
+      effects = ingredient.effects,
+      highlightedEffects = new Set(),
+      isEffectClickable = false
+    } = options;
     const $row = $('<tr>');
     const ingredientClass = firstCellClass ?? selectedClasses.get(ingredient.name) ?? getIngredientClass(ingredient);
 
@@ -378,7 +389,7 @@ $(document).ready(() => {
     }));
 
     effects.forEach(effect => {
-      $row.append(createEffectCell(effect, isEffectClickable));
+      $row.append(createEffectCell(effect, isEffectClickable, highlightedEffects));
     });
 
     return $row;
@@ -647,8 +658,11 @@ $(document).ready(() => {
 
     finalCombinationNames.forEach(name => {
       const ingredient = ingredientByName.get(name);
+      const matchedEffects = new Set(ingredient.effects.filter(effect => effectsToShow.has(effect)));
+
       createIngredientRow(ingredient, {
-        effects: orderCombinationEffects(ingredient.effects, effectsToShow)
+        effects: orderCombinationEffects(ingredient.effects, effectsToShow),
+        highlightedEffects: matchedEffects.size > 1 ? matchedEffects : new Set()
       }).appendTo(fragment);
     });
 

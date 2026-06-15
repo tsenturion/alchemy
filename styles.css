@@ -70,12 +70,24 @@ th { background-color: #f2f2f2; cursor: default; }
 .brew-result-effects.hint-positive {
     background-color: var(--hint-positive-bg);
 }
+.positive.hint-positive,
+.hint-positive {
+    background-color: var(--hint-positive-bg);
+}
 .brew-result-label.hint-negative,
 .brew-result-effects.hint-negative {
     background-color: var(--hint-negative-bg);
 }
+.negative.hint-negative,
+.hint-negative {
+    background-color: var(--hint-negative-bg);
+}
 .brew-result-label.hint-mixed,
 .brew-result-effects.hint-mixed {
+    background: linear-gradient(90deg, var(--hint-negative-bg) 50%, var(--hint-positive-bg) 50%);
+}
+.mixed.hint-mixed,
+.hint-mixed {
     background: linear-gradient(90deg, var(--hint-negative-bg) 50%, var(--hint-positive-bg) 50%);
 }
 .effect-cell {
