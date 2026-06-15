@@ -460,11 +460,23 @@ $(document).ready(() => {
     });
   };
 
-  const orderCombinationEffects = (effects, matchedEffects) => orderEffectsByPriority(effects, effect => {
-    if (matchedEffects.has(effect)) return 0;
-    if (getEffectMatchesSelectedPolarity(effect)) return 1;
-    return 2;
-  });
+  const orderCombinationEffects = (effects, matchedEffects, matchedEffectPriority) => effects
+    .map((effect, index) => {
+      const isMatched = matchedEffects.has(effect);
+
+      return {
+        effect,
+        index,
+        priority: isMatched ? 0 : getEffectMatchesSelectedPolarity(effect) ? 1 : 2,
+        matchedPriority: isMatched
+          ? matchedEffectPriority.get(effect) ?? Number.POSITIVE_INFINITY
+          : Number.POSITIVE_INFINITY
+      };
+    })
+    .sort((left, right) => left.priority - right.priority
+      || left.matchedPriority - right.matchedPriority
+      || left.index - right.index)
+    .map(item => item.effect);
 
   const orderSelectedEffectTableEffects = effects => {
     if (!selectedEffect) return effects;
@@ -737,7 +749,7 @@ $(document).ready(() => {
       const matchedEffects = new Set(ingredient.effects.filter(effect => effectsToShow.has(effect)));
 
       createIngredientRow(ingredient, {
-        effects: orderCombinationEffects(ingredient.effects, effectsToShow),
+        effects: orderCombinationEffects(ingredient.effects, effectsToShow, effectPriority),
         highlightedEffects: matchedEffects.size > 1 ? matchedEffects : new Set(),
         isEffectClickable: true
       }).appendTo(fragment);
