@@ -583,6 +583,24 @@ $(document).ready(() => {
     return true;
   });
 
+  const getAdditionalEffectCandidates = () => {
+    const candidates = new Set();
+
+    ingredients.forEach(ingredient => {
+      if (selectedNames.has(ingredient.name)) return;
+      if (searchQuery && !ingredient.name.toLowerCase().includes(searchQuery)) return;
+      if (!selectedEffects.every(effect => ingredient.effects.includes(effect))) return;
+
+      ingredient.effects.forEach(effect => {
+        if (!selectedEffects.includes(effect)) {
+          candidates.add(effect);
+        }
+      });
+    });
+
+    return candidates;
+  };
+
   const updateEffectHeaderControls = () => {
     $effectHeaderButtons.each(function () {
       const $button = $(this);
@@ -914,6 +932,14 @@ $(document).ready(() => {
     setSelectedEffects([...selectedEffects, effect]);
   };
 
+  const stepBackSelectedEffect = () => {
+    if (!selectedEffects.length) return;
+
+    selectedEffects = selectedEffects.slice(0, -1);
+    syncSelectedEffect();
+    renderTable();
+  };
+
   const scrollToEffectTable = () => {
     const $target = $effectTitle.is(':visible') ? $effectTitle : $('#data-table');
     const top = $target.offset()?.top;
@@ -926,14 +952,6 @@ $(document).ready(() => {
   const setSelectedEffectAndScroll = effect => {
     setSelectedEffect(effect);
     scrollToEffectTable();
-  };
-
-  const clearSelectedEffect = () => {
-    selectedEffects = [];
-    syncSelectedEffect();
-    searchQuery = '';
-    $search.val('');
-    renderTable();
   };
 
   const showMessageRow = message => {
@@ -1372,16 +1390,57 @@ $(document).ready(() => {
 
   const positionMenu = ($button, $menu) => {
     const isMobile = window.matchMedia('(max-width: 700px)').matches;
-    $menu.css('left', isMobile ? 0 : $button.position().left);
+
+    $menu
+      .removeClass('table-menu')
+      .css({
+        position: '',
+        top: '',
+        left: isMobile ? 0 : $button.position().left,
+        right: '',
+        width: '',
+        minWidth: '',
+        maxWidth: ''
+      });
+  };
+
+  const positionTableMenu = ($positionAnchor, $sizeAnchor, $menu) => {
+    const positionRect = $positionAnchor[0].getBoundingClientRect();
+    const sizeRect = $sizeAnchor[0].getBoundingClientRect();
+    const viewportPadding = 4;
+    const width = Math.min(
+      Math.max(sizeRect.width, 1),
+      Math.max(window.innerWidth - viewportPadding * 2, 1)
+    );
+    const left = Math.min(
+      Math.max(sizeRect.left, viewportPadding),
+      Math.max(window.innerWidth - width - viewportPadding, viewportPadding)
+    );
+
+    $menu
+      .addClass('table-menu')
+      .css({
+        position: 'fixed',
+        top: `${positionRect.bottom + viewportPadding}px`,
+        left: `${left}px`,
+        right: 'auto',
+        width: `${width}px`,
+        minWidth: 0,
+        maxWidth: `calc(100vw - ${viewportPadding * 2}px)`
+      });
   };
 
   const updateEffectsMenuButtons = () => {
     const query = normalizeSearch($effectsMenu.find('.effect-search').val() || '');
+    const additionalEffectCandidates = effectMenuMode === EFFECT_MENU_MODE.add
+      ? getAdditionalEffectCandidates()
+      : null;
 
     $effectsMenu.find('.effect-btn').each(function () {
       const effect = $(this).data('effect');
       const matchesSearch = normalizeSearch(effect).includes(query);
-      const canUseEffect = effectMenuMode !== EFFECT_MENU_MODE.add || !selectedEffects.includes(effect);
+      const canUseEffect = effectMenuMode !== EFFECT_MENU_MODE.add
+        || additionalEffectCandidates.has(effect);
 
       $(this).toggle(matchesSearch && canUseEffect);
     });
@@ -1392,7 +1451,13 @@ $(document).ready(() => {
     $addonsMenu.hide();
   };
 
-  const showEffectsMenu = (mode = EFFECT_MENU_MODE.replace, canToggle = false) => {
+  const showEffectsMenu = (mode = EFFECT_MENU_MODE.replace, options = {}) => {
+    const {
+      canToggle = false,
+      $positionAnchor = $('#menu-btn'),
+      $sizeAnchor = $positionAnchor,
+      alignToTable = false
+    } = typeof options === 'boolean' ? { canToggle: options } : options;
     const shouldShow = canToggle ? !$effectsMenu.is(':visible') || effectMenuMode !== mode : true;
 
     closeMenus();
@@ -1400,10 +1465,19 @@ $(document).ready(() => {
     if (!shouldShow) return;
 
     effectMenuMode = mode;
-    positionMenu($('#menu-btn'), $effectsMenu);
+    if (alignToTable) {
+      positionTableMenu($positionAnchor, $sizeAnchor, $effectsMenu);
+    } else {
+      positionMenu($positionAnchor, $effectsMenu);
+    }
+
     updateEffectsMenuButtons();
     $effectsMenu.show();
   };
+
+  const getEffectSlotCell = slot => $effectHeaderButtons
+    .eq(Math.min(Math.max(slot, 0), MAX_EFFECT_FILTER_COUNT - 1))
+    .closest('th');
 
   const toggleMenu = ($button, $menu) => {
     const shouldShow = !$menu.is(':visible');
@@ -1446,10 +1520,17 @@ $(document).ready(() => {
 
     if (selectedEffects.length >= MAX_EFFECT_FILTER_COUNT) return;
 
-    showEffectsMenu(selectedEffects.length ? EFFECT_MENU_MODE.add : EFFECT_MENU_MODE.replace);
+    const effectSlot = selectedEffects.length ? selectedEffects.length : 0;
+
+    showEffectsMenu(selectedEffects.length ? EFFECT_MENU_MODE.add : EFFECT_MENU_MODE.replace, {
+      $positionAnchor: $mainHintEffectBtn.closest('th'),
+      $sizeAnchor: getEffectSlotCell(effectSlot),
+      alignToTable: true
+    });
   });
 
   $effectHeaderButtons.on('click', function (event) {
+    const $headerCell = $(this).closest('th');
     const slot = Number($(this).data('effectSlot'));
     const canAddEffect = selectedEffects.length > 0
       && slot === selectedEffects.length
@@ -1458,12 +1539,20 @@ $(document).ready(() => {
     event.stopPropagation();
 
     if (slot === 0) {
-      showEffectsMenu(EFFECT_MENU_MODE.replace);
+      showEffectsMenu(EFFECT_MENU_MODE.replace, {
+        $positionAnchor: $headerCell,
+        $sizeAnchor: $headerCell,
+        alignToTable: true
+      });
       return;
     }
 
     if (canAddEffect) {
-      showEffectsMenu(EFFECT_MENU_MODE.add);
+      showEffectsMenu(EFFECT_MENU_MODE.add, {
+        $positionAnchor: $headerCell,
+        $sizeAnchor: $headerCell,
+        alignToTable: true
+      });
     }
   });
 
@@ -1490,7 +1579,7 @@ $(document).ready(() => {
     renderTable();
   });
 
-  $backBtn.add($effectBackBtn).on('click', clearSelectedEffect);
+  $backBtn.add($effectBackBtn).on('click', stepBackSelectedEffect);
 
   $dataTableBody.on('click', 'td:first-child', function (event) {
     addIngredient($(this).data('name'), event);
