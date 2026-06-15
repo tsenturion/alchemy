@@ -587,14 +587,31 @@ $(document).ready(() => {
     });
   };
 
+  const updateMainHintEffectControl = () => {
+    const labels = [
+      'Выберите эффект чтобы посмотреть все ингридиенты',
+      'Выберите второй эффект, чтобы найти совпадения.',
+      'Выберите третий эффект, чтобы найти совпадения.',
+      'Выберите четвертый эффект, чтобы найти совпадения.'
+    ];
+    const hasMaxSelectedEffects = selectedEffects.length >= MAX_EFFECT_FILTER_COUNT;
+
+    $mainHintEffectBtn
+      .prop('disabled', hasMaxSelectedEffects)
+      .text(hasMaxSelectedEffects
+        ? 'Ингридиенты с выбранными эффектами:'
+        : labels[selectedEffects.length]);
+  };
+
   const updateFilterControls = () => {
     const hasSelectedEffects = selectedEffects.length > 0;
 
     $backBtn.toggle(hasSelectedEffects);
     $effectTitleText.text(selectedEffects.join(' / '));
     $effectTitle.css('display', hasSelectedEffects ? 'flex' : 'none');
-    $mainHintRow.toggle(!hasSelectedEffects || selectedNames.size === 0);
+    $mainHintRow.show();
     updateEffectHeaderControls();
+    updateMainHintEffectControl();
   };
 
   const renderEffectsMenu = () => {
@@ -1409,7 +1426,10 @@ $(document).ready(() => {
 
   $mainHintEffectBtn.on('click', event => {
     event.stopPropagation();
-    showEffectsMenu(EFFECT_MENU_MODE.replace);
+
+    if (selectedEffects.length >= MAX_EFFECT_FILTER_COUNT) return;
+
+    showEffectsMenu(selectedEffects.length ? EFFECT_MENU_MODE.add : EFFECT_MENU_MODE.replace);
   });
 
   $effectHeaderButtons.on('click', function (event) {

@@ -70,10 +70,11 @@ th { background-color: #f2f2f2; cursor: default; }
     font-weight: inherit;
     text-align: inherit;
 }
-.main-hint-effect-button,
+.main-hint-effect-button:not(:disabled),
 .effect-header-button:not(:disabled) {
     cursor: pointer;
 }
+.main-hint-effect-button:disabled,
 .effect-header-button:disabled {
     cursor: default;
 }
