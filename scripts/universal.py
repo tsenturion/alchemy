@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA_FILE_NAME = 'data.json'
 EFFECTS_FILE_NAME = 'effects.json'
 POSITIVE_NEGATIVE_FILE_NAME = 'positive_negative_data.json'
+EFFECT_TRANSLATIONS_FILE_NAME = 'effect_translations.json'
 
 
 def load_json(path: Path):
@@ -201,9 +202,26 @@ def make_effect_match_entry(candidate):
     }
 
 
+def load_effect_translations(translations_path: Path):
+    if not translations_path.exists():
+        return {}
+
+    data = load_json(translations_path)
+    if not isinstance(data, dict):
+        raise ValueError(f'Файл должен содержать объект JSON: {translations_path}')
+
+    return {
+        standard_effect: caco_effect
+        for standard_effect, caco_effect in data.items()
+        if isinstance(standard_effect, str) and isinstance(caco_effect, str)
+    }
+
+
 def find_caco_effect_matches(data_path: Path, caco_data_path: Path, min_shared=2, min_similarity=0.5):
     standard_data = load_json(data_path)
     caco_data = load_json(caco_data_path)
+    known_translations = load_effect_translations(caco_data_path.parent / EFFECT_TRANSLATIONS_FILE_NAME)
+    known_caco_effects = set(known_translations.values())
 
     standard_by_name = {
         item.get('name'): item
@@ -227,6 +245,8 @@ def find_caco_effect_matches(data_path: Path, caco_data_path: Path, min_shared=2
     for standard_effect, standard_names in standard_effects.items():
         for caco_effect, caco_names in caco_effects.items():
             if standard_effect == caco_effect:
+                continue
+            if standard_effect in known_translations or caco_effect in known_caco_effects:
                 continue
 
             shared_count = intersection_count(standard_names, caco_names)

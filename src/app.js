@@ -4,6 +4,7 @@ $(document).ready(() => {
   const DATA_FILE_NAME = 'data.json';
   const EFFECTS_FILE_NAME = 'effects.json';
   const EFFECT_POLARITY_FILE_NAME = 'positive_negative_data.json';
+  const EFFECT_TRANSLATIONS_FILE_NAME = 'effect_translations.json';
   const ROOT_DATA_PATH = `${DATA_ROOT}/${DATA_FILE_NAME}`;
   const ROOT_EFFECTS_PATH = `${DATA_ROOT}/${EFFECTS_FILE_NAME}`;
   const ROOT_EFFECT_POLARITY_PATH = `${DATA_ROOT}/${EFFECT_POLARITY_FILE_NAME}`;
@@ -137,6 +138,7 @@ $(document).ready(() => {
   const getDirectoryPathFromDataPath = dataPath => dataPath.replace(/\/data\.json$/i, '');
   const getEffectsPath = dataPath => dataPath.replace(/data\.json$/i, EFFECTS_FILE_NAME);
   const getEffectPolarityPath = dataPath => dataPath.replace(/data\.json$/i, EFFECT_POLARITY_FILE_NAME);
+  const getEffectTranslationsPath = dataPath => dataPath.replace(/data\.json$/i, EFFECT_TRANSLATIONS_FILE_NAME);
 
   const createAddonDefinitions = dataPaths => uniqueSortedPaths(dataPaths)
     .map(dataPath => {
@@ -150,6 +152,7 @@ $(document).ready(() => {
         dataPath,
         effectsPath: getEffectsPath(dataPath),
         polarityPath: getEffectPolarityPath(dataPath),
+        translationsPath: getEffectTranslationsPath(dataPath),
         folderName,
         name: ADDON_DISPLAY_NAMES.get(normalizedFolderName) || folderName,
         defaultEnabled,
@@ -742,6 +745,7 @@ $(document).ready(() => {
     id: ROOT_DATA_PATH,
     dataPath: ROOT_DATA_PATH,
     effectsPath: ROOT_EFFECTS_PATH,
+    translationsPath: getEffectTranslationsPath(ROOT_DATA_PATH),
     name: 'Стандартный data.json',
     root: true,
     required: true
@@ -778,6 +782,7 @@ $(document).ready(() => {
         data: [],
         effects: null,
         polarity: null,
+        translations: new Map(),
         status: SOURCE_STATUS.idle,
         error: null,
         promise: null
@@ -847,6 +852,28 @@ $(document).ready(() => {
       });
   };
 
+  const normalizeEffectTranslations = translationsData => {
+    const translations = new Map();
+
+    if (!translationsData || typeof translationsData !== 'object' || Array.isArray(translationsData)) {
+      return translations;
+    }
+
+    Object.entries(translationsData).forEach(([sourceEffect, targetEffect]) => {
+      if (typeof sourceEffect === 'string' && typeof targetEffect === 'string') {
+        translations.set(sourceEffect, targetEffect);
+      }
+    });
+
+    return translations;
+  };
+
+  const translateEffects = (effects, translations) => {
+    if (!translations.size) return effects;
+
+    return getUniqueEffects(effects.map(effect => translations.get(effect) || effect));
+  };
+
   const ensureRootPolarityLoaded = async () => {
     if (rootPolarityStatus === SOURCE_STATUS.loaded) {
       return rootPolarityData;
@@ -889,10 +916,11 @@ $(document).ready(() => {
 
     entry.promise = (async () => {
       try {
-        const [data, effects, polarity] = await Promise.all([
+        const [data, effects, polarity, translations] = await Promise.all([
           source.root ? fetchJson(source.dataPath) : fetchOptionalJson(source.dataPath),
           fetchOptionalJson(source.effectsPath),
-          source.root ? Promise.resolve(null) : fetchOptionalJson(source.polarityPath)
+          source.root ? Promise.resolve(null) : fetchOptionalJson(source.polarityPath),
+          fetchOptionalJson(source.translationsPath)
         ]);
 
         if (!Array.isArray(data)) {
@@ -902,6 +930,7 @@ $(document).ready(() => {
         entry.data = normalizeSourceData(data, effects);
         entry.effects = Array.isArray(effects) ? effects : null;
         entry.polarity = polarity;
+        entry.translations = normalizeEffectTranslations(translations);
         entry.status = SOURCE_STATUS.loaded;
         entry.error = null;
         rememberSourceCount(source, entry.data);
@@ -909,6 +938,7 @@ $(document).ready(() => {
         entry.data = [];
         entry.effects = null;
         entry.polarity = null;
+        entry.translations = new Map();
         entry.status = SOURCE_STATUS.error;
         entry.error = error;
 
@@ -943,15 +973,29 @@ $(document).ready(() => {
   const rebuildCurrentData = () => {
     const mergedByName = new Map();
     const polarityByEffect = new Map();
+    const activeSources = getLoadedActiveSourceDefinitions();
+    const effectTranslations = new Map();
 
     addEffectPolarityData(rootPolarityData, polarityByEffect);
 
-    getLoadedActiveSourceDefinitions().forEach(source => {
+    activeSources.forEach(source => {
+      const entry = getSourceEntry(source);
+
+      entry.translations.forEach((targetEffect, sourceEffect) => {
+        effectTranslations.set(sourceEffect, targetEffect);
+      });
+    });
+
+    activeSources.forEach(source => {
       const entry = getSourceEntry(source);
 
       entry.data.forEach(ingredient => {
         if (!ingredient || !ingredient.name || !Array.isArray(ingredient.effects)) return;
-        mergedByName.set(ingredient.name, ingredient);
+
+        mergedByName.set(ingredient.name, {
+          ...ingredient,
+          effects: translateEffects(ingredient.effects, effectTranslations)
+        });
       });
 
       addEffectPolarityData(entry.polarity, polarityByEffect);
