@@ -1436,7 +1436,7 @@ $(document).ready(() => {
       .addClass('table-menu')
       .css({
         position: 'fixed',
-        top: `${positionRect.bottom + viewportPadding}px`,
+        top: `${positionRect.bottom}px`,
         left: `${left}px`,
         right: 'auto',
         width: `${width}px`,
@@ -1536,10 +1536,11 @@ $(document).ready(() => {
     if (selectedEffects.length >= MAX_EFFECT_FILTER_COUNT) return;
 
     const effectSlot = selectedEffects.length ? selectedEffects.length : 0;
+    const $effectSlotCell = getEffectSlotCell(effectSlot);
 
     showEffectsMenu(selectedEffects.length ? EFFECT_MENU_MODE.add : EFFECT_MENU_MODE.replace, {
-      $positionAnchor: $mainHintEffectBtn.closest('th'),
-      $sizeAnchor: getEffectSlotCell(effectSlot),
+      $positionAnchor: $effectSlotCell,
+      $sizeAnchor: $effectSlotCell,
       alignToTable: true
     });
   });
