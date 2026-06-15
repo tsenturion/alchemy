@@ -410,10 +410,38 @@ $(document).ready(() => {
       .sort(compareRu);
   };
 
-  const getEffectMatchesSelectedPolarity = effect => {
-    if (selectedPolarity === POLARITY.positive) return positiveEffects.has(effect);
-    if (selectedPolarity === POLARITY.negative) return negativeEffects.has(effect);
+  const getEffectMatchesPolarity = (effect, polarity) => {
+    if (polarity === POLARITY.positive) return positiveEffects.has(effect);
+    if (polarity === POLARITY.negative) return negativeEffects.has(effect);
     return false;
+  };
+
+  const getEffectMatchesSelectedPolarity = effect => getEffectMatchesPolarity(effect, selectedPolarity);
+
+  const getOppositePolarity = polarity => {
+    if (polarity === POLARITY.positive) return POLARITY.negative;
+    if (polarity === POLARITY.negative) return POLARITY.positive;
+    return '';
+  };
+
+  const getOppositeMatchedEffects = selectedIngredients => {
+    const oppositePolarity = getOppositePolarity(selectedPolarity);
+
+    if (!selectedEffect || !oppositePolarity || !selectedIngredients.length) {
+      return new Set();
+    }
+
+    const matchedEffects = new Set();
+
+    selectedIngredients.forEach(ingredient => {
+      ingredient.effects.forEach(effect => {
+        if (getEffectMatchesPolarity(effect, oppositePolarity)) {
+          matchedEffects.add(effect);
+        }
+      });
+    });
+
+    return matchedEffects;
   };
 
   const orderEffectsByPriority = (effects, getPriority) => effects
@@ -535,13 +563,24 @@ $(document).ready(() => {
   const renderTable = () => {
     const fragment = document.createDocumentFragment();
     const visibleIngredients = getVisibleIngredients();
+    const selectedIngredients = Array.from(selectedNames)
+      .map(name => ingredientByName.get(name))
+      .filter(Boolean);
+    const oppositeMatchedEffects = getOppositeMatchedEffects(selectedIngredients);
 
     visibleIngredients.forEach(ingredient => {
       const effects = selectedEffect
         ? [selectedEffect, ...ingredient.effects.filter(effect => effect !== selectedEffect)]
         : ingredient.effects;
+      const highlightedEffects = selectedEffect
+        ? new Set(ingredient.effects.filter(effect => oppositeMatchedEffects.has(effect)))
+        : new Set();
 
-      createIngredientRow(ingredient, { effects, isEffectClickable: true }).appendTo(fragment);
+      createIngredientRow(ingredient, {
+        effects,
+        highlightedEffects,
+        isEffectClickable: true
+      }).appendTo(fragment);
     });
 
     $dataTableBody.empty().append(fragment);
