@@ -33,6 +33,37 @@ $(document).ready(() => {
     renderAllTables();
   };
 
+  const getIngredientSelectionPolarity = ($button, event, $selectionArea = $button) => {
+    const selectionPolarity = $button.data('selectionPolarity');
+
+    if (selectionPolarity) return selectionPolarity;
+    if (!$button.data('mixedSelection')) return '';
+
+    const clickOffset = event.pageX - $selectionArea.offset().left;
+    return clickOffset < $selectionArea.outerWidth() / 2
+      ? config.POLARITY.negative
+      : config.POLARITY.positive;
+  };
+
+  const handleIngredientActionCell = ($cell, event) => {
+    const $button = $cell.find('.ingredient-add-btn');
+    if (!$button.length) return false;
+
+    addIngredient(
+      $button.data('name'),
+      getIngredientSelectionPolarity($button, event, $cell)
+    );
+    return true;
+  };
+
+  const handleEffectActionCell = ($cell, onEffect) => {
+    const $button = $cell.find('.effect-cell');
+    if (!$button.length) return false;
+
+    onEffect($button.data('effect'));
+    return true;
+  };
+
   const removeIngredient = name => {
     state.selectedNames.delete(name);
     state.selectedClasses.delete(name);
@@ -165,24 +196,24 @@ $(document).ready(() => {
 
   dom.$backBtn.add(dom.$effectBackBtn).on('click', stepBackSelectedEffect);
 
-  dom.$dataTableBody.on('click', '.ingredient-add-btn', function () {
-    addIngredient($(this).data('name'), $(this).data('selectionPolarity'));
+  dom.$dataTableBody.on('click', 'td.action-cell', function (event) {
+    const $cell = $(this);
+    if (handleIngredientActionCell($cell, event)) return;
+    handleEffectActionCell($cell, setSelectedEffect);
   });
 
-  dom.$combinationTableBody.on('click', '.ingredient-add-btn', function () {
-    addIngredient($(this).data('name'), $(this).data('selectionPolarity'));
-  });
-
-  dom.$combinationTableBody.on('click', '.effect-cell', function () {
-    setSelectedEffectAndScroll($(this).data('effect'));
+  dom.$combinationTableBody.on('click', 'td.action-cell', function (event) {
+    const $cell = $(this);
+    if (handleIngredientActionCell($cell, event)) return;
+    handleEffectActionCell($cell, setSelectedEffectAndScroll);
   });
 
   dom.$selectionTableBody.on('click', '.remove-btn', function () {
     removeIngredient($(this).data('name'));
   });
 
-  dom.$selectionTableBody.on('click', '.effect-cell', function () {
-    setSelectedEffectAndScroll($(this).data('effect'));
+  dom.$selectionTableBody.on('click', 'td.action-cell', function () {
+    handleEffectActionCell($(this), setSelectedEffectAndScroll);
   });
 
   dom.$removeAllBtn.on('click', clearSelection);
@@ -201,10 +232,6 @@ $(document).ready(() => {
 
   dom.$effectsMenu.on('input', '.effect-search', function () {
     renderer.updateEffectsMenuButtons();
-  });
-
-  dom.$dataTableBody.on('click', '.effect-cell', function () {
-    setSelectedEffect($(this).data('effect'));
   });
 
   dataLoader.initializeData();

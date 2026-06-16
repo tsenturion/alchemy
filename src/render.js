@@ -49,38 +49,33 @@
         });
 
         if (isClickable) {
-          $cell.append(createEffectButton(effect));
+          setActionCell($cell).append(createEffectButton(effect));
         }
 
         return $cell;
       };
 
-      const createIngredientActionButton = (ingredient, selectionPolarity = '') => $('<button>')
-        .attr({
-          type: 'button',
-          'aria-label': `Добавить ${ingredient.name}`
-        })
-        .addClass('ingredient-action ingredient-add-btn')
-        .data({
-          name: ingredient.name,
-          selectionPolarity
-        })
-        .text(ingredient.name);
+      const createIngredientActionButton = (ingredient, options = {}) => {
+        const {
+          selectionPolarity = '',
+          isMixedSelection = false
+        } = options;
 
-      const createIngredientChoiceButton = (ingredient, selectionPolarity, label) => $('<button>')
-        .attr({
-          type: 'button',
-          'aria-label': `Добавить ${ingredient.name}: ${label}`
-        })
-        .addClass(`ingredient-action ingredient-add-btn ingredient-choice ${selectionPolarity}`)
-        .data({
-          name: ingredient.name,
-          selectionPolarity
-        })
-        .append(
-          $('<span>').text(ingredient.name),
-          $('<span>').addClass('ingredient-choice-label').text(label)
-        );
+        return $('<button>')
+          .attr({
+            type: 'button',
+            'aria-label': `Добавить ${ingredient.name}`
+          })
+          .addClass('ingredient-action ingredient-add-btn')
+          .data({
+            name: ingredient.name,
+            selectionPolarity,
+            mixedSelection: isMixedSelection
+          })
+          .text(ingredient.name);
+      };
+
+      const setActionCell = $cell => $cell.addClass('action-cell');
 
       const createIngredientNameCell = (ingredient, options = {}) => {
         const { firstCellClass, isIngredientClickable = false } = options;
@@ -93,17 +88,10 @@
 
         if (!isIngredientClickable) return $cell;
 
-        if (ingredientClass === POLARITY.mixed && !state.selectedPolarity) {
-          $cell.append(
-            $('<div>').addClass('ingredient-choice-group').append(
-              createIngredientChoiceButton(ingredient, POLARITY.negative, 'Яд'),
-              createIngredientChoiceButton(ingredient, POLARITY.positive, 'Зелье')
-            )
-          );
-          return $cell;
-        }
+        setActionCell($cell).append(createIngredientActionButton(ingredient, {
+          isMixedSelection: ingredientClass === POLARITY.mixed && !state.selectedPolarity
+        }));
 
-        $cell.append(createIngredientActionButton(ingredient));
         return $cell;
       };
 
@@ -127,11 +115,11 @@
       const appendResultEffectCell = ($row, effect) => {
         const effectClass = logic.getEffectClass(effect);
 
-        createCell({
+        setActionCell(createCell({
           text: '',
           className: `brew-result-effects ${effectClass} ${effectClass ? `hint-${effectClass}` : ''}`,
           data: { effect }
-        })
+        }))
           .append(createEffectButton(effect))
           .appendTo($row);
       };
